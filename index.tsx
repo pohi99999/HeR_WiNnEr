@@ -1465,10 +1465,13 @@ const AiChatView = ({ ai, tasks, onAddTask, onAddNotification }) => {
                             const tomorrowStr = tomorrow.toISOString().split('T')[0];
                             filteredTasks = filteredTasks.filter(t => t.dueDate === tomorrowStr);
                         } else if (dateRange === 'this_week') {
-                             const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon...
-                             const firstDayOfWeek = new Date(today.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1)));
-                             const lastDayOfWeek = new Date(firstDayOfWeek);
+                             const firstDayOfWeek = new Date(today.getTime());
+                             const dayOfWeek = firstDayOfWeek.getDay(); // 0=Sun, 1=Mon...
+                             firstDayOfWeek.setDate(firstDayOfWeek.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+                             
+                             const lastDayOfWeek = new Date(firstDayOfWeek.getTime());
                              lastDayOfWeek.setDate(firstDayOfWeek.getDate() + 6);
+                             
                              filteredTasks = filteredTasks.filter(t => t.dueDate && new Date(t.dueDate) >= firstDayOfWeek && new Date(t.dueDate) <= lastDayOfWeek);
                         }
                     }
@@ -1744,6 +1747,377 @@ const AiCreativeView = ({ ai, onSaveToDocs, onAddNotification }) => {
     );
 };
 
+const AiContactAssistant = ({ contact, relatedItems, ai, onAddNotification }) => {
+    const [emailPrompt, setEmailPrompt] = useState('');
+    const [generatedEmail, setGeneratedEmail] = useState('');
+    const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
+
+    const [summary, setSummary] = useState('');
+    const [isSummarizing, setIsSummarizing] = useState(false);
+    
+    useEffect(() => {
+        // Reset state when contact changes
+        setEmailPrompt('');
+        setGeneratedEmail('');
+        setSummary('');
+    }, [contact]);
+
+    const handleGenerateEmail = async () => {
+        if (!emailPrompt.trim()) return;
+        setIsGeneratingEmail(true);
+        setGeneratedEmail('');
+        const prompt = `Te egy profi üzleti asszisztens vagy. Írj egy udvarias, professzionális emailt a következő személynek a megadott utasítások alapján. A válaszodban csak magát az email szövegét add vissza, mindenféle bevezető vagy magyarázat nélkül.\n\nCímzett neve: ${contact.name}\nCímzett email címe: ${contact.email}\n\nUtasítás: "${emailPrompt}"`;
+
+        try {
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            setGeneratedEmail(response.text);
+        } catch (err) {
+            console.error("AI Email Generation Error:", err);
+            onAddNotification({ message: 'Hiba az email piszkozat generálása közben.', type: 'error' });
+        } finally {
+            setIsGeneratingEmail(false);
+        }
+    };
+    
+    const handleSummarize = async () => {
+        setIsSummarizing(true);
+        setSummary('');
+        
+        const contextData = `
+            Jegyzetek: ${contact.notes || 'Nincs'}
+            Kapcsolódó projektek: ${relatedItems.relatedProjects.map(p => p.title).join(', ') || 'Nincs'}
+            Kapcsolódó pályázatok: ${relatedItems.relatedProposals.map(p => p.title).join(', ') || 'Nincs'}
+            Legutóbbi emailek (tárgy): ${relatedItems.relatedEmails.slice(0, 3).map(e => e.subject).join('; ') || 'Nincs'}
+        `;
+
+        const prompt = `Te egy intelligens asszisztens vagy. A feladatod, hogy összefoglald a kapcsolatot egy személlyel a megadott adatok alapján. Adj egy rövid, lényegretörő, 3-4 mondatos összefoglalót a kapcsolat státuszáról és a legutóbbi interakciókról. A válaszodat magyarul add meg.\n\nSzemély neve: ${contact.name}\nAdatok:\n${contextData}`;
+
+        try {
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            setSummary(response.text);
+        } catch (err) {
+            console.error("AI Summary Error:", err);
+            onAddNotification({ message: 'Hiba az összefoglaló generálása közben.', type: 'error' });
+        } finally {
+            setIsSummarizing(false);
+        }
+    };
+
+    return (
+        <aside className="ai-contact-assistant card">
+            <h4><span className="material-symbols-outlined">psychology</span>AI Asszisztens</h4>
+            <div className="ai-assistant-section">
+                <h5>Email piszkozat generálása</h5>
+                <textarea 
+                    value={emailPrompt}
+                    onChange={e => setEmailPrompt(e.target.value)}
+                    placeholder="Írja le röviden, miről szóljon az email..."
+                    rows={3}
+                    disabled={isGeneratingEmail}
+                />
+                <button className="button button-secondary" onClick={handleGenerateEmail} disabled={isGeneratingEmail || !emailPrompt.trim()}>
+                    {isGeneratingEmail ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">edit_note</span>}
+                    Piszkozat
+                </button>
+                {generatedEmail && (
+                    <div className="ai-result-box">
+                        <pre>{generatedEmail}</pre>
+                        <button className="button button-secondary" onClick={() => navigator.clipboard.writeText(generatedEmail)}>
+                            <span className="material-symbols-outlined">content_copy</span>Másolás
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            <div className="ai-assistant-section">
+                <h5>Interakciók Összefoglalása</h5>
+                <button className="button button-secondary" onClick={handleSummarize} disabled={isSummarizing}>
+                     {isSummarizing ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">summarize</span>}
+                    Kapcsolat Összefoglalása
+                </button>
+                 {summary && (
+                    <div className="ai-result-box">
+                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+                    </div>
+                )}
+            </div>
+        </aside>
+    );
+};
+
+const ContactsView = ({ contacts, projects, proposals, emails, onOpenContactModal, ai, onAddNotification }) => {
+    const [selectedContactId, setSelectedContactId] = useState(contacts[0]?.id || null);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredContacts = contacts.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const selectedContact = contacts.find(c => c.id === selectedContactId);
+
+    const relatedItems = useMemo(() => {
+        if (!selectedContact) return { relatedProjects: [], relatedProposals: [], relatedEmails: [] };
+        const relatedProjects = projects.filter(p => selectedContact.linkedProjectIds?.includes(p.id));
+        const relatedProposals = proposals.filter(p => selectedContact.linkedProposalIds?.includes(p.id));
+        const relatedEmails = emails.filter(e => e.sender === selectedContact.email || e.recipient === selectedContact.email)
+            .sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        return { relatedProjects, relatedProposals, relatedEmails };
+    }, [selectedContact, projects, proposals, emails]);
+
+    return (
+        <View 
+            title="Kapcsolatok" 
+            subtitle="Ügyfelek, partnerek és csapattagok kezelése."
+            actions={<button className="button button-primary" onClick={() => onOpenContactModal()}><span className="material-symbols-outlined">add</span>Új Kapcsolat</button>}
+        >
+            <div className="contacts-view-layout card">
+                <aside className="contact-list-pane">
+                    <div className="contact-search-bar">
+                        <input type="search" placeholder="Kapcsolat keresése..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    </div>
+                    <ul className="contact-list">
+                        {filteredContacts.map(contact => (
+                            <li 
+                                key={contact.id} 
+                                className={`contact-list-item ${selectedContactId === contact.id ? 'selected' : ''}`}
+                                onClick={() => setSelectedContactId(contact.id)}
+                            >
+                                <div className="avatar-sm">{contact.name.charAt(0).toUpperCase()}</div>
+                                <div className="contact-item-info">
+                                    <span className="contact-name">{contact.name}</span>
+                                    <span className="contact-company">{contact.company}</span>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </aside>
+                <div className="contact-detail-pane">
+                    {selectedContact ? (
+                        <>
+                            <div className="contact-main-info">
+                                <div className="contact-header">
+                                    <h3>{selectedContact.name}</h3>
+                                    <p>{selectedContact.role} @ {selectedContact.company}</p>
+                                </div>
+                                <div className="contact-info-grid">
+                                    {selectedContact.email && <span><span className="material-symbols-outlined">email</span>{selectedContact.email}</span>}
+                                    {selectedContact.phone && <span><span className="material-symbols-outlined">phone</span>{selectedContact.phone}</span>}
+                                </div>
+                                <div className="contact-actions">
+                                    <button className="button button-secondary" onClick={() => onOpenContactModal(selectedContact)}>
+                                        <span className="material-symbols-outlined">edit</span>Szerkesztés
+                                    </button>
+                                </div>
+                                <div className="contact-notes">
+                                    <h4>Jegyzetek</h4>
+                                    <p>{selectedContact.notes || 'Nincsenek jegyzetek ehhez a kontakthoz.'}</p>
+                                </div>
+                                <div className="related-items-grid">
+                                    <div className="related-item-list">
+                                        <h4>Kapcsolódó Projektek ({relatedItems.relatedProjects.length})</h4>
+                                        <ul>{relatedItems.relatedProjects.map(p => <li key={p.id}>{p.title}</li>)}</ul>
+                                    </div>
+                                     <div className="related-item-list">
+                                        <h4>Kapcsolódó Pályázatok ({relatedItems.relatedProposals.length})</h4>
+                                        <ul>{relatedItems.relatedProposals.map(p => <li key={p.id}>{p.title}</li>)}</ul>
+                                    </div>
+                                     <div className="related-item-list">
+                                        <h4>Kapcsolódó Emailek ({relatedItems.relatedEmails.length})</h4>
+                                        <ul>{relatedItems.relatedEmails.slice(0, 5).map(e => <li key={e.id} title={e.subject}>{e.subject}</li>)}</ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <AiContactAssistant contact={selectedContact} relatedItems={relatedItems} ai={ai} onAddNotification={onAddNotification} />
+                        </>
+                    ) : (
+                        <div className="empty-pane-placeholder">
+                             <span className="material-symbols-outlined">person_search</span>
+                            <p>Válasszon ki egy kapcsolatot a részletek megtekintéséhez.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </View>
+    );
+};
+
+
+const GlobalHeader = ({ onToggleNav, onOpenSearch }) => {
+    return (
+        <header className="global-header">
+            <button className="mobile-nav-toggle" onClick={onToggleNav}>
+                <span className="material-symbols-outlined">menu</span>
+            </button>
+            <div className="global-header-actions">
+                <button className="search-button" onClick={onOpenSearch}>
+                    <span className="material-symbols-outlined">search</span>
+                    <span>Keresés</span>
+                    <kbd>Ctrl+K</kbd>
+                </button>
+                <div className="user-profile">
+                    <span>Üdv, Felhasználó</span>
+                    <div className="avatar-sm">F</div>
+                </div>
+            </div>
+        </header>
+    );
+};
+
+const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNotification }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [results, setResults] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setSearchTerm('');
+            setResults(null);
+            setTimeout(() => inputRef.current?.focus(), 100);
+        }
+    }, [isOpen]);
+
+    const handleSearch = useCallback(async (term) => {
+        if (!term.trim()) {
+            setResults(null);
+            return;
+        }
+
+        const lowerTerm = term.toLowerCase();
+
+        // Local search first
+        const localResults = {
+            tasks: allData.tasks.filter(i => i.title.toLowerCase().includes(lowerTerm)).slice(0, 5),
+            projects: allData.projects.filter(i => i.title.toLowerCase().includes(lowerTerm)).slice(0, 5),
+            proposals: allData.proposals.filter(i => i.title.toLowerCase().includes(lowerTerm)).slice(0, 5),
+            contacts: allData.contacts.filter(i => i.name.toLowerCase().includes(lowerTerm)).slice(0, 5),
+            docs: allData.docs.filter(i => i.title.toLowerCase().includes(lowerTerm)).slice(0, 5),
+            emails: allData.emails.filter(i => i.subject.toLowerCase().includes(lowerTerm) || i.body.toLowerCase().includes(lowerTerm)).slice(0, 5),
+        };
+        setResults({ local: localResults, web: null });
+
+        // If it looks like a question, perform a web search
+        if (term.includes('?') || term.split(' ').length > 3) {
+            setIsLoading(true);
+            try {
+                const response = await ai.models.generateContent({
+                   model: "gemini-2.5-flash",
+                   contents: term,
+                   config: { tools: [{googleSearch: {}}] },
+                });
+                setResults(prev => ({ 
+                    ...prev, 
+                    web: { 
+                        answer: response.text, 
+                        sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
+                    } 
+                }));
+            } catch (err) {
+                console.error("Web search error:", err);
+                onAddNotification({ message: 'Hiba a webes keresés során.', type: 'error' });
+            } finally {
+                setIsLoading(false);
+            }
+        }
+    }, [ai, allData, onAddNotification]);
+
+    const debouncedSearch = useCallback(
+        (nextValue) => {
+            const timer = setTimeout(() => {
+                handleSearch(nextValue);
+            }, 300); // 300ms debounce time
+            return () => clearTimeout(timer);
+        },
+        [handleSearch]
+    );
+
+     useEffect(() => {
+        if (searchTerm) {
+            debouncedSearch(searchTerm);
+        } else {
+            setResults(null);
+        }
+    }, [searchTerm, debouncedSearch]);
+
+
+    const handleResultClick = (viewId, params = {}) => {
+        onNavigate(viewId, params);
+        onClose();
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card global-search-modal" onClick={e => e.stopPropagation()}>
+                <div className="search-input-wrapper">
+                    <span className="material-symbols-outlined">search</span>
+                    <input 
+                        ref={inputRef}
+                        type="text" 
+                        placeholder="Keressen bármire az alkalmazásban, vagy tegyen fel egy kérdést..." 
+                        value={searchTerm}
+                        onChange={e => { setSearchTerm(e.target.value) }}
+                    />
+                     <button onClick={onClose} className="button-icon-close" style={{position: 'static'}}>&times;</button>
+                </div>
+
+                <div className="search-results-container">
+                    {isLoading && !results?.web && <div className="widget-placeholder"><span className="material-symbols-outlined progress_activity"></span><p>Keresés az interneten...</p></div>}
+                    
+                    {results?.web && (
+                        <div className="search-result-group web-results">
+                            <h4>Gemini Válasza</h4>
+                            <div className="web-answer">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{results.web.answer}</ReactMarkdown>
+                            </div>
+                            {results.web.sources && Array.isArray(results.web.sources) && results.web.sources.length > 0 && (
+                                <div className="web-sources">
+                                    <h5>Források:</h5>
+                                    <ul>
+                                        {results.web.sources.map((source: any, index: number) => (
+                                            <li key={index}>
+                                                <a href={source.web.uri} target="_blank" rel="noopener noreferrer">{source.web.title}</a>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    
+                    {results?.local && Object.entries(results.local).map(([key, items]) => {
+                        if (items.length === 0) return null;
+                        const categoryInfo = {
+                            tasks: { title: 'Feladatok', icon: 'task_alt', view: 'tasks' },
+                            projects: { title: 'Projektek', icon: 'schema', view: 'projects' },
+                            proposals: { title: 'Pályázatok', icon: 'description', view: 'proposals' },
+                            contacts: { title: 'Kapcsolatok', icon: 'contacts', view: 'contacts' },
+                            docs: { title: 'Dokumentumok', icon: 'folder', view: 'docs' },
+                            emails: { title: 'Emailek', icon: 'mail', view: 'email' },
+                        }[key];
+                        return (
+                             <div key={key} className="search-result-group">
+                                <h4>{categoryInfo.title}</h4>
+                                <ul className="search-result-list">
+                                    {items.map(item => (
+                                        <li key={item.id} onClick={() => handleResultClick(categoryInfo.view)}>
+                                            <span className="material-symbols-outlined">{categoryInfo.icon}</span>
+                                            <span>{item.title || item.name || item.subject}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        );
+                    })}
+
+                    {!isLoading && !results && searchTerm && (
+                         <div className="widget-placeholder">
+                            <p>Nincs találat a "{searchTerm}" kifejezésre.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // --- APP ---
 const App = () => {
@@ -2274,6 +2648,86 @@ const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMo
                 </ul>
             </nav>
         </aside>
+    );
+};
+
+const EmailComposeModal = ({ isOpen, onClose, onSend, initialData, ai, onAddNotification }) => {
+    const [recipient, setRecipient] = useState('');
+    const [subject, setSubject] = useState('');
+    const [body, setBody] = useState('');
+    const [aiPrompt, setAiPrompt] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            if (initialData?.mode === 'reply' && initialData?.originalEmail) {
+                const original = initialData.originalEmail;
+                setRecipient(original.sender);
+                setSubject(`Re: ${original.subject}`);
+                setBody(`\n\n---\nOn ${new Date(original.timestamp).toLocaleString()}, ${original.sender} wrote:\n>${original.body.split('\n').join('\n>')}`);
+            } else {
+                setRecipient(initialData?.recipient || '');
+                setSubject(initialData?.subject || '');
+                setBody(initialData?.body || '');
+            }
+            setAiPrompt('');
+        }
+    }, [isOpen, initialData]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!recipient.trim() || !subject.trim()) return;
+        onSend({ recipient, subject, body });
+        onClose();
+    };
+    
+    const handleAiGenerate = async () => {
+        if (!aiPrompt.trim()) return;
+        setIsGenerating(true);
+        const prompt = `Írj egy professzionális emailt a következő instrukciók alapján. A válaszodban csak az email törzsét add vissza, mindenféle bevezető vagy magyarázat nélkül.\n\nCímzett: ${recipient}\nTárgy: ${subject}\n\nInstrukciók: "${aiPrompt}"`;
+        try {
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            setBody(prev => (prev.trim() ? prev + '\n\n' : '') + response.text);
+        } catch (err) {
+            console.error("AI Email generation error:", err);
+            onAddNotification({ message: 'Hiba történt az email generálása közben.', type: 'error' });
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card" onClick={e => e.stopPropagation()} style={{maxWidth: '800px'}}>
+                <div className="modal-header">
+                    <h3>Új Email</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <form onSubmit={handleSubmit} className="modal-form">
+                    <div className="form-group"><label htmlFor="email-recipient">Címzett</label><input id="email-recipient" type="email" value={recipient} onChange={e => setRecipient(e.target.value)} required /></div>
+                    <div className="form-group"><label htmlFor="email-subject">Tárgy</label><input id="email-subject" type="text" value={subject} onChange={e => setSubject(e.target.value)} required /></div>
+                    <div className="form-group"><label htmlFor="email-body">Szöveg</label><textarea id="email-body" value={body} onChange={e => setBody(e.target.value)} rows={10}></textarea></div>
+                    
+                    <div className="ai-assistant-panel card" style={{marginBottom: 'var(--spacing-md)'}}>
+                         <h4><span className="material-symbols-outlined">psychology</span>AI Asszisztens</h4>
+                         <div className="form-group">
+                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Írja le, mit szeretne az emailbe..." rows={2} disabled={isGenerating} />
+                         </div>
+                         <button type="button" onClick={handleAiGenerate} disabled={isGenerating || !aiPrompt.trim()} className="button button-secondary">
+                            {isGenerating ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">auto_draw</span>}
+                            Szöveg generálása
+                         </button>
+                    </div>
+
+                    <div className="modal-actions">
+                        <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
+                        <button type="submit" className="button button-primary"><span className="material-symbols-outlined">send</span>Küldés</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     );
 };
 
@@ -3499,139 +3953,4 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
                             </div>
                         </div>
                         <div className="chart-legend horizontal">
-                            <div className="legend-item"><div className="legend-color-box" style={{backgroundColor: 'var(--color-accent)'}}></div><span>Bevétel</span></div>
-                            <div className="legend-item"><div className="legend-color-box" style={{backgroundColor: 'var(--color-destructive)'}}></div><span>Kiadás</span></div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Projects Report Card */}
-                 <div className="card report-card report-card-projects">
-                    <div className="report-header">
-                        <h3>Projekt Áttekintés</h3>
-                    </div>
-                     <div className="report-content">
-                        <div className="report-metrics">
-                           <div className="report-metric"><span>Aktív projektek</span><strong>{projectSummary.activeProjects.length}</strong></div>
-                           <div className="report-metric"><span>Átlagos készültség</span><strong>{Math.round(projectSummary.overallProgress)}%</strong></div>
-                        </div>
-                        <div className="report-item-list">
-                            {projectSummary.activeProjects.map(p => (
-                                <div key={p.id} className="report-list-item">
-                                    <span>{p.title}</span>
-                                    <div className="progress-bar-container mini">
-                                        <div className="progress-bar-fill" style={{ width: `${p.progress}%` }}></div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                         <button onClick={generateProjectReport} className="button button-secondary" disabled={isProjectReportLoading}>
-                            {isProjectReportLoading ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">psychology</span>} AI Állapotfelmérés
-                        </button>
-                         {projectReport && <div className="ai-summary-content report-ai-summary"><ReactMarkdown remarkPlugins={[remarkGfm]}>{projectReport}</ReactMarkdown></div>}
-                    </div>
-                </div>
-                
-                 {/* Training Report Card */}
-                <div className="card report-card report-card-training">
-                     <div className="report-header">
-                        <h3>Képzések</h3>
-                    </div>
-                     <div className="report-content">
-                         <div className="report-metrics">
-                           <div className="report-metric"><span>Folyamatban</span><strong>{trainingSummary.inProgress.length}</strong></div>
-                           <div className="report-metric"><span>Befejezett</span><strong>{trainingSummary.completedCount}</strong></div>
-                           <div className="report-metric"><span>Átlagos haladás</span><strong>{Math.round(trainingSummary.avgProgress)}%</strong></div>
-                        </div>
-                        <div className="report-item-list">
-                            {trainingSummary.inProgress.map(t => (
-                                <div key={t.id} className="report-list-item">
-                                    <span>{t.title}</span>
-                                    <div className="progress-bar-container mini">
-                                        <div className="progress-bar-fill" style={{ width: `${t.progress}%` }}></div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </View>
-    );
-};
-
-const AiContactAssistant = ({ contact, relatedItems, ai, onAddNotification }) => {
-    const [emailPrompt, setEmailPrompt] = useState('');
-    const [generatedEmail, setGeneratedEmail] = useState('');
-    const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
-
-    const [summary, setSummary] = useState('');
-    const [isSummarizing, setIsSummarizing] = useState(false);
-    
-    useEffect(() => {
-        // Reset state when contact changes
-        setEmailPrompt('');
-        setGeneratedEmail('');
-        setSummary('');
-    }, [contact]);
-
-    const handleGenerateEmail = async () => {
-        if (!emailPrompt.trim()) return;
-        setIsGeneratingEmail(true);
-        setGeneratedEmail('');
-        const prompt = `Te egy profi üzleti asszisztens vagy. Írj egy udvarias, professzionális emailt a következő személynek a megadott utasítások alapján. A válaszodban csak magát az email szövegét add vissza, mindenféle bevezető vagy magyarázat nélkül.\n\nCímzett neve: ${contact.name}\nCímzett email címe: ${contact.email}\n\nUtasítás: "${emailPrompt}"`;
-
-        try {
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-            setGeneratedEmail(response.text);
-        } catch (err) {
-            console.error("AI Email Generation Error:", err);
-            onAddNotification({ message: 'Hiba az email piszkozat generálása közben.', type: 'error' });
-        } finally {
-            setIsGeneratingEmail(false);
-        }
-    };
-    
-    const handleSummarize = async () => {
-        setIsSummarizing(true);
-        setSummary('');
-        
-        const contextData = `
-            Jegyzetek: ${contact.notes || 'Nincs'}
-            Kapcsolódó projektek: ${relatedItems.relatedProjects.map(p => p.title).join(', ') || 'Nincs'}
-            Kapcsolódó pályázatok: ${relatedItems.relatedProposals.map(p => p.title).join(', ') || 'Nincs'}
-            Legutóbbi emailek (tárgy): ${relatedItems.relatedEmails.slice(0, 3).map(e => e.subject).join('; ') || 'Nincs'}
-        `;
-
-        const prompt = `Te egy intelligens asszisztens vagy. A feladatod, hogy összefoglald a kapcsolatot egy személlyel a megadott adatok alapján. Adj egy rövid, lényegretörő, 3-4 mondatos összefoglalót a kapcsolat státuszáról és a legutóbbi interakciókról. A válaszodat magyarul add meg.\n\nSzemély neve: ${contact.name}\nAdatok:\n${contextData}`;
-
-        try {
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-            setSummary(response.text);
-        } catch (err) {
-            console.error("AI Summary Error:", err);
-            onAddNotification({ message: 'Hiba az összefoglaló generálása közben.', type: 'error' });
-        } finally {
-            setIsSummarizing(false);
-        }
-    };
-
-
-    return (
-        <aside className="ai-contact-assistant card">
-            <h4><span className="material-symbols-outlined">psychology</span>AI Asszisztens</h4>
-            <div className="ai-assistant-section">
-                <h5>Email piszkozat generálása</h5>
-                <textarea 
-                    value={emailPrompt}
-                    onChange={e => setEmailPrompt(e.target.value)}
-                    placeholder="Írja le röviden, miről szóljon az email..."
-                    rows={3}
-                    disabled={isGeneratingEmail}
-                />
-                <button className="button button-secondary" onClick={handleGenerateEmail} disabled={isGeneratingEmail || !emailPrompt.trim()}>
-                    {isGeneratingEmail ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">edit_note</span>}
-                    Piszkozat
-                </button>
-                {generatedEmail && (
-                    <
+                            <div className="legend-item"><div className="legend-color-box" style={{backgroundColor: 'var(--color-accent)'}}></div><span>Bevétel</span>
