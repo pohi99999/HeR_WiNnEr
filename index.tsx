@@ -1148,6 +1148,7 @@ const ContactModal = ({ isOpen, onClose, onSave, contact }) => {
 
 const ItemTypes = {
   TASK: 'task',
+  PROPOSAL: 'proposal',
 };
 
 const TaskBoardCard = ({ task, onOpenTaskModal }) => {
@@ -1784,6 +1785,7 @@ const App = () => {
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
     
     const [selectedProjectForDetail, setSelectedProjectForDetail] = useState<Project | null>(null);
+    const [selectedProposalForDetail, setSelectedProposalForDetail] = useState<Proposal | null>(null);
 
     const [notifications, setNotifications] = useState<Notification[]>([]);
     
@@ -1861,11 +1863,23 @@ const App = () => {
                 status: 'Teendő',
                 createdAt: new Date().toISOString(),
                 projectId: taskData.projectId,
+                proposalId: taskData.proposalId,
             };
             setTasks(prev => [newTask, ...prev]);
             handleAddNotification({ message: 'Feladat sikeresen létrehozva!', type: 'success' });
         }
     }, [handleAddNotification]);
+    
+    const handleAddTasksBatch = (tasksData: Omit<TaskItem, 'id' | 'createdAt' | 'status'>[]) => {
+        const newTasks: TaskItem[] = tasksData.map(taskData => ({
+            id: `task-${Date.now()}-${Math.random()}`,
+            ...taskData,
+            status: 'Teendő',
+            createdAt: new Date().toISOString(),
+        }));
+        setTasks(prev => [...newTasks, ...prev]);
+        handleAddNotification({ message: `${newTasks.length} új feladat hozzáadva!`, type: 'success' });
+    };
 
     
     const handleAddEvent = (eventData: Omit<PlannerEvent, 'id'>) => {
@@ -1929,6 +1943,12 @@ const App = () => {
         handleAddNotification({ message: 'Pályázat sikeresen létrehozva!', type: 'success' });
     };
 
+    const handleSaveProposal = (proposalData: Partial<Proposal>) => {
+        setProposals(prev => prev.map(p => p.id === proposalData.id ? { ...p, ...proposalData } : p));
+        handleAddNotification({ message: 'Pályázat sikeresen frissítve!', type: 'success' });
+    };
+
+
     const handleSaveImageToDocs = (docData: Omit<DocItem, 'id' | 'createdAt'>) => {
         const newDoc: DocItem = {
             id: `doc-${Date.now()}`,
@@ -1980,6 +2000,10 @@ const App = () => {
         setSelectedProjectForDetail(project);
     };
 
+    const handleOpenProposalDetail = (proposal: Proposal) => {
+        setSelectedProposalForDetail(proposal);
+    };
+
     const handleSaveContact = (contactData) => {
         if (contactData.id) {
             setContacts(prev => prev.map(c => c.id === contactData.id ? { ...c, ...contactData } : c));
@@ -2015,7 +2039,7 @@ const App = () => {
             case 'planner': return <PlannerView events={plannerEvents} onOpenEventModal={handleOpenEventModal} onOpenDayModal={handleOpenDayModal} />;
             case 'email': return <EmailView ai={ai} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />;
             case 'projects': return <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} onProjectClick={handleOpenProjectDetail} />;
-            case 'proposals': return <ProposalsView proposals={proposals} tasks={tasks} onOpenProposalModal={() => setProposalModalOpen(true)} />;
+            case 'proposals': return <ProposalsView proposals={proposals} setProposals={setProposals} tasks={tasks} onOpenProposalModal={() => setProposalModalOpen(true)} onProposalClick={handleOpenProposalDetail} onAddNotification={handleAddNotification} />;
             case 'finances': return <FinancesView transactions={transactions} ai={ai} onOpenTransactionModal={() => setTransactionModalOpen(true)} />;
             case 'docs': return <DocsView docs={docs} onImageClick={(src) => { setImageModalSrc(src); setImageModalOpen(true); }} onNoteClick={(docId) => handleNavigate('doc-editor', { docId })} onAddNote={() => { const newDocId = `doc-${Date.now()}`; setDocs(prev => [{id: newDocId, type: 'note', title: 'Új jegyzet', content: '', createdAt: new Date().toISOString()}, ...prev]); handleNavigate('doc-editor', { docId: newDocId }); }} />;
             case 'doc-editor': {
@@ -2094,6 +2118,17 @@ const App = () => {
                 project={selectedProjectForDetail}
                 tasks={tasks}
                 onOpenTaskModal={handleOpenTaskModal}
+            />
+
+            <ProposalDetailModal
+                isOpen={!!selectedProposalForDetail}
+                onClose={() => setSelectedProposalForDetail(null)}
+                proposal={selectedProposalForDetail}
+                tasks={tasks}
+                onSaveProposal={handleSaveProposal}
+                onAddTasksBatch={handleAddTasksBatch}
+                ai={ai}
+                onAddNotification={handleAddNotification}
             />
 
             <TransactionModal
@@ -2479,70 +2514,282 @@ const ProjectDetailModal = ({ isOpen, onClose, project, tasks, onOpenTaskModal }
     );
 };
 
-const ProposalsView = ({ proposals, tasks, onOpenProposalModal }) => {
-    const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
+const ProposalDetailModal = ({ isOpen, onClose, proposal, tasks, onSaveProposal, onAddTasksBatch, ai, onAddNotification }) => {
+    if (!isOpen || !proposal) return null;
 
-    const handleCloseModal = () => setSelectedProposal(null);
+    const [currentSummary, setCurrentSummary] = useState(proposal.summary);
+    const [improvedSummary, setImprovedSummary] = useState('');
+    const [isImprovingSummary, setIsImprovingSummary] = useState(false);
+    
+    const [suggestedTasks, setSuggestedTasks] = useState([]);
+    const [isSuggestingTasks, setIsSuggestingTasks] = useState(false);
+    
+    useEffect(() => {
+        if(proposal) {
+            setCurrentSummary(proposal.summary);
+            setImprovedSummary('');
+            setSuggestedTasks([]);
+        }
+    }, [proposal]);
 
-    const ProposalDetailModal = ({ proposal, onClose }) => {
-        if (!proposal) return null;
-        const relatedTasks = tasks.filter(t => t.proposalId === proposal.id);
-        return (
-            <div className="modal-overlay" onClick={onClose}>
-                <div className="modal-content card" onClick={e => e.stopPropagation()}>
-                    <div className="modal-header">
-                        <h3>{proposal.title}</h3>
-                        <button onClick={onClose} className="button-icon-close">&times;</button>
-                    </div>
-                    <div className="proposal-modal-body">
-                        <div className="proposal-details-grid">
-                            <span><strong>Kiíró:</strong></span><span>{proposal.funder}</span>
-                            <span><strong>Határidő:</strong></span><span>{formatDate(proposal.submissionDeadline)}</span>
-                            <span><strong>Státusz:</strong></span><span className={`status-pill ${getProposalStatusClass(proposal.status)}`}>{proposal.status}</span>
-                            <span><strong>Összeg:</strong></span><span>{proposal.amount.toLocaleString('hu-HU')} Ft</span>
-                        </div>
-                        <p className="proposal-description"><strong>Összefoglaló:</strong> {proposal.summary || "Nincs megadva."}</p>
-                        
-                        {relatedTasks.length > 0 &&
-                            <div className="related-tasks-section">
-                                <h4>Kapcsolódó feladatok</h4>
-                                <div className="task-list">
-                                    {relatedTasks.map(task => (
-                                         <div key={task.id} className="task-item-title-container">
-                                            <span className={`material-symbols-outlined ${task.status === 'Kész' ? 'check_circle' : 'radio_button_unchecked'}`}>{task.status === 'Kész' ? 'check_circle' : 'radio_button_unchecked'}</span>
-                                            <span className={`task-item-title ${task.status === 'Kész' ? 'completed' : ''}`}>{task.title}</span>
-                                        </div>
-                                    ))}
+    const handleImproveSummary = async () => {
+        setIsImprovingSummary(true);
+        const prompt = `Te egy profi pályázatíró asszisztens vagy. Javítsd fel a következő pályázati összefoglalót, hogy professzionálisabb és meggyőzőbb legyen. A válaszodat magyarul add meg, és csak a javított szöveget add vissza, mindenféle bevezető vagy magyarázat nélkül.\n\nPályázat címe: "${proposal.title}"\n\nEredeti összefoglaló:\n"${currentSummary}"`;
+        try {
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            setImprovedSummary(response.text);
+        } catch (err) {
+            console.error("AI Summary Error:", err);
+            onAddNotification({ message: 'Hiba az összefoglaló javítása közben.', type: 'error' });
+        } finally {
+            setIsImprovingSummary(false);
+        }
+    };
+    
+    const handleSuggestTasks = async () => {
+        setIsSuggestingTasks(true);
+        setSuggestedTasks([]);
+
+        const schema = {
+            type: Type.OBJECT,
+            properties: {
+                tasks: {
+                    type: Type.ARRAY,
+                    description: "A pályázat megvalósításához szükséges 4-6 legfontosabb feladat listája.",
+                    items: {
+                        type: Type.OBJECT,
+                        properties: { title: { type: Type.STRING, description: "A feladat címe." } },
+                        required: ['title']
+                    }
+                }
+            },
+            required: ['tasks']
+        };
+
+        const prompt = `Te egy tapasztalt projektmenedzser vagy. A felhasználó egy pályázatot készít. Elemezd a pályázat címét és összefoglalóját, és generálj egy listát a 4-6 legfontosabb, konkrét feladatról, ami a sikeres pályázáshoz szükséges. Válaszodat a megadott JSON séma szerint add meg.\n\nPályázat címe: "${proposal.title}"\nÖsszefoglaló: "${currentSummary}"`;
+
+        try {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash", contents: prompt,
+                config: { responseMimeType: "application/json", responseSchema: schema }
+            });
+            const result = JSON.parse(response.text.trim());
+            setSuggestedTasks(result.tasks.map(task => ({ ...task, id: `sugg-${Math.random()}`, checked: true })));
+        } catch (err) {
+            console.error("AI Task Suggestion Error:", err);
+            onAddNotification({ message: 'Hiba a feladatok javaslata közben.', type: 'error' });
+        } finally {
+            setIsSuggestingTasks(false);
+        }
+    };
+
+    const handleToggleSuggestedTask = (taskId) => {
+        setSuggestedTasks(prev => prev.map(t => t.id === taskId ? { ...t, checked: !t.checked } : t));
+    };
+
+    const handleAddSelectedTasks = () => {
+        const tasksToAdd = suggestedTasks
+            .filter(t => t.checked)
+            .map(t => ({
+                title: t.title,
+                priority: 'Magas' as TaskPriority,
+                category: 'Pályázat' as TaskCategory,
+                proposalId: proposal.id,
+            }));
+        if (tasksToAdd.length > 0) {
+            onAddTasksBatch(tasksToAdd);
+        }
+        onClose();
+    };
+
+    const relatedTasks = tasks.filter(t => t.proposalId === proposal.id);
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card" style={{ maxWidth: '800px' }} onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>{proposal.title}</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <div className="proposal-detail-modal-body">
+                    <div className="proposal-main-grid">
+                        <div className="proposal-details-section">
+                             <h4>Részletek</h4>
+                            <div className="proposal-details-grid">
+                                <span><strong>Kiíró:</strong></span><span>{proposal.funder}</span>
+                                <span><strong>Határidő:</strong></span><span>{formatDate(proposal.submissionDeadline)}</span>
+                                <span><strong>Státusz:</strong></span><span className={`status-pill ${getProposalStatusClass(proposal.status)}`}>{proposal.status}</span>
+                                <span><strong>Összeg:</strong></span><span>{proposal.amount.toLocaleString('hu-HU')} Ft</span>
+                            </div>
+                             <h4>Összefoglaló</h4>
+                             <textarea value={currentSummary} onChange={e => setCurrentSummary(e.target.value)} rows={4}></textarea>
+                             <button className="button button-secondary" onClick={() => onSaveProposal({ id: proposal.id, summary: currentSummary })} style={{marginTop: 'var(--spacing-sm)'}}>
+                                <span className="material-symbols-outlined">save</span>Összefoglaló mentése
+                             </button>
+
+                             {improvedSummary && (
+                                <div className="ai-summary-content" style={{marginTop: 'var(--spacing-md)'}}>
+                                    <h5>AI javaslat:</h5>
+                                    <p>{improvedSummary}</p>
+                                    <button className="button button-primary" onClick={() => setCurrentSummary(improvedSummary)}>
+                                        Javaslat alkalmazása
+                                    </button>
+                                </div>
+                            )}
+
+                             <div className="related-tasks-section" style={{marginTop: 'var(--spacing-lg)'}}>
+                                <h4>Kapcsolódó feladatok ({relatedTasks.length})</h4>
+                                <div className="task-list" style={{maxHeight: '150px'}}>
+                                    {relatedTasks.length > 0 ? (
+                                        relatedTasks.map(task => (
+                                            <div key={task.id} className="task-item-title-container">
+                                                <span className={`material-symbols-outlined ${task.status === 'Kész' ? 'check_circle' : 'radio_button_unchecked'}`}>{task.status === 'Kész' ? 'check_circle' : 'radio_button_unchecked'}</span>
+                                                <span className={`task-item-title ${task.status === 'Kész' ? 'completed' : ''}`}>{task.title}</span>
+                                            </div>
+                                        ))
+                                    ) : <p>Nincsenek még feladatok.</p>}
                                 </div>
                             </div>
-                        }
+                        </div>
+                        <aside className="ai-assistant-panel card">
+                            <h4><span className="material-symbols-outlined">psychology</span>AI Pályázati Asszisztens</h4>
+                            <div className="ai-assistant-actions">
+                                <button className="button button-secondary" onClick={handleImproveSummary} disabled={isImprovingSummary}>
+                                    {isImprovingSummary ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">auto_fix_high</span>}
+                                    Összefoglaló javítása
+                                </button>
+                                <button className="button button-secondary" onClick={handleSuggestTasks} disabled={isSuggestingTasks}>
+                                    {isSuggestingTasks ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">checklist</span>}
+                                    Feladatok javaslása
+                                </button>
+                            </div>
+                            {suggestedTasks.length > 0 && (
+                                <div className="ai-summary-content">
+                                    <h5>Javasolt feladatok:</h5>
+                                    <div className="generated-task-list">
+                                        {suggestedTasks.map(task => (
+                                            <div key={task.id} className="generated-task-item" style={{background: 'var(--color-surface-glass)'}}>
+                                                <input type="checkbox" checked={task.checked} onChange={() => handleToggleSuggestedTask(task.id)} />
+                                                <label>{task.title}</label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button className="button button-primary" onClick={handleAddSelectedTasks} style={{width: '100%', marginTop: 'var(--spacing-md)'}}>
+                                        Kiválasztottak hozzáadása
+                                    </button>
+                                </div>
+                            )}
+                        </aside>
                     </div>
                 </div>
             </div>
-        );
+        </div>
+    );
+};
+
+
+const ProposalBoardCard = ({ proposal, tasks, onProposalClick }) => {
+    const ref = React.useRef<HTMLDivElement>(null);
+    const [{ isDragging }, drag] = useDrag(() => ({
+        type: ItemTypes.PROPOSAL,
+        item: { id: proposal.id, status: proposal.status },
+        collect: (monitor) => ({ isDragging: monitor.isDragging() }),
+    }));
+    drag(ref);
+
+    const getProposalProgress = (proposalId: string) => {
+        const relatedTasks = tasks.filter(t => t.proposalId === proposalId);
+        if (relatedTasks.length === 0) return 0;
+        const completedTasks = relatedTasks.filter(t => t.status === 'Kész').length;
+        return (completedTasks / relatedTasks.length) * 100;
     };
+    const progress = getProposalProgress(proposal.id);
+
+    return (
+        <div ref={ref} className="proposal-card-kanban card" onClick={() => onProposalClick(proposal)} style={{ opacity: isDragging ? 0.5 : 1 }}>
+            <h4>{proposal.title}</h4>
+            <p className="funder">{proposal.funder}</p>
+            <div className="proposal-card-footer">
+                <span className="amount">{proposal.amount.toLocaleString('hu-HU')} Ft</span>
+                <span className="deadline"><span className="material-symbols-outlined">event</span>{formatDate(proposal.submissionDeadline)}</span>
+            </div>
+             <div className="project-card-footer">
+                <span>Haladás</span>
+                <span>{Math.round(progress)}%</span>
+            </div>
+            <div className="progress-bar-container">
+                <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
+            </div>
+        </div>
+    );
+};
+
+const ProposalColumn = ({ status, proposals, onProposalDrop, tasks, onProposalClick }) => {
+    const ref = React.useRef<HTMLDivElement>(null);
+    const [{ isOver }, drop] = useDrop(() => ({
+        accept: ItemTypes.PROPOSAL,
+        drop: (item: { id: string }) => onProposalDrop(item.id, status),
+        collect: (monitor) => ({ isOver: !!monitor.isOver() }),
+    }));
+    drop(ref);
+
+    return (
+        <div ref={ref} className={`kanban-column ${isOver ? 'is-over' : ''}`}>
+            <div className="kanban-column-header">
+                <h3>{status}</h3>
+                <span className="task-count">{proposals.length}</span>
+            </div>
+            <div className="kanban-column-body">
+                {proposals.map(p => <ProposalBoardCard key={p.id} proposal={p} tasks={tasks} onProposalClick={onProposalClick} />)}
+                {proposals.length === 0 && <div className="kanban-empty-placeholder">Húzzon ide egy pályázatot</div>}
+            </div>
+        </div>
+    );
+};
+
+const ProposalsView = ({ proposals, setProposals, tasks, onOpenProposalModal, onProposalClick, onAddNotification }) => {
+    const statuses: ProposalStatus[] = ['Készül', 'Beadva', 'Értékelés alatt', 'Elfogadva', 'Elutasítva'];
+
+    const handleProposalDrop = (proposalId: string, newStatus: ProposalStatus) => {
+        const proposalToMove = proposals.find(p => p.id === proposalId);
+        if (proposalToMove && proposalToMove.status !== newStatus) {
+            setProposals(currentProposals =>
+                currentProposals.map(p => p.id === proposalId ? { ...p, status: newStatus } : p)
+            );
+            onAddNotification({ message: `"${proposalToMove.title}" státusza megváltozott: ${newStatus}`, type: 'success' });
+        }
+    };
+    
+    const proposalsByStatus = useMemo(() => {
+        const grouped: { [key in ProposalStatus]?: Proposal[] } = {};
+        proposals.forEach(proposal => {
+            (grouped[proposal.status] = grouped[proposal.status] || []).push(proposal);
+        });
+        return grouped;
+    }, [proposals]);
 
     return (
         <View 
             title="Pályázatok" 
-            subtitle="Pályázatok kezelése és nyomon követése."
+            subtitle="Pályázatok kezelése és nyomon követése Kanban-táblán."
             actions={<button className="button button-primary" onClick={onOpenProposalModal}><span className="material-symbols-outlined">add</span>Új pályázat</button>}
         >
-            <div className="proposals-grid">
-                {proposals.map(proposal => (
-                    <div key={proposal.id} className="proposal-card card" onClick={() => setSelectedProposal(proposal)}>
-                        <div className="proposal-card-header">
-                            <h4>{proposal.title}</h4>
-                            <span className={`status-pill ${getProposalStatusClass(proposal.status)}`}>{proposal.status}</span>
-                        </div>
-                        <div className="proposal-card-body">
-                            <p className="funder">{proposal.funder}</p>
-                            <p className="amount">{proposal.amount.toLocaleString('hu-HU')} Ft</p>
-                        </div>
+             <DndProvider backend={HTML5Backend}>
+                <div className="proposals-kanban-board-container">
+                    <div className="kanban-board">
+                        {statuses.map(status => (
+                            <ProposalColumn 
+                                key={status} 
+                                status={status} 
+                                proposals={proposalsByStatus[status] || []} 
+                                onProposalDrop={handleProposalDrop}
+                                tasks={tasks}
+                                onProposalClick={onProposalClick} 
+                            />
+                        ))}
                     </div>
-                ))}
-            </div>
-            {selectedProposal && <ProposalDetailModal proposal={selectedProposal} onClose={handleCloseModal} />}
+                </div>
+            </DndProvider>
         </View>
     );
 };
@@ -3048,7 +3295,7 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
         
         // Get the Monday of the current week as a starting point
         const mondayOfThisWeek = new Date(today);
-        mondayOfThisWeek.setDate(today.getDate() - daysSinceMonday);
+        mondayOfThisWeek.setDate(mondayOfThisWeek.getDate() - daysSinceMonday);
         
         // Apply the offset to get the target week's Monday
         const start = new Date(mondayOfThisWeek);
@@ -3057,7 +3304,7 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
 
         // Calculate the end of the week (Sunday)
         const end = new Date(start);
-        end.setDate(start.getDate() + 6);
+        end.setDate(end.getDate() + 6);
         end.setHours(23, 59, 59, 999);
 
         const label = `${start.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })}`;
@@ -3384,45 +3631,4 @@ const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNoti
             <div className="modal-content card global-search-modal" onClick={e => e.stopPropagation()}>
                 <form onSubmit={handleSearch}>
                     <div className="search-input-wrapper">
-                        <span className="material-symbols-outlined">search</span>
-                        <input
-                            ref={inputRef}
-                            type="text"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            placeholder="Keresés az alkalmazásban vagy a weben..."
-                        />
-                    </div>
-                </form>
-                <div className="search-results-container">
-                    {isLoading && <div className="widget-placeholder" style={{ background: 'transparent' }}><span className="material-symbols-outlined progress_activity">progress_activity</span><p>Keresés...</p></div>}
-                    {!isLoading && results && (
-                        <div className="search-results-content">
-                             <div className="markdown-content">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{results.text}</ReactMarkdown>
-                            </div>
-                            {groundingChunks && groundingChunks.length > 0 && (
-                                <div className="grounding-results">
-                                    <h4>Források:</h4>
-                                    <ul>
-                                        {groundingChunks.map((chunk, index) => (
-                                            chunk.web && <li key={index}><a href={chunk.web.uri} target="_blank" rel="noopener noreferrer">{chunk.web.title}</a></li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    {!isLoading && !results && <div className="widget-placeholder" style={{ background: 'transparent' }}><span className="material-symbols-outlined">manage_search</span><p>Kezdjen el gépelni a kereséshez.</p></div>}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+                        <span className="material-symbols-outlined">search
