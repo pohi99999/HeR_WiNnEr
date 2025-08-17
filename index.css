@@ -669,14 +669,4 @@ label { font-weight: var(--font-weight-semibold); font-size: 0.9rem; color: var(
     color: var(--color-text-secondary);
 }
 
-/* Mobile & Responsive */
-@media (max-width: 1024px) {
-    .sidebar {
-        position: fixed;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        transform: translateX(-100%);
-        box-shadow: var(--shadow-lg);
-    }
-    .app-layout.mobile-nav-open .sidebar {
+/* Reports View */

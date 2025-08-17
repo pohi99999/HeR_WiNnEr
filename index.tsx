@@ -2546,6 +2546,12 @@ const ProjectDetailModal = ({ isOpen, onClose, project, tasks, onOpenTaskModal }
     );
 };
 
+interface AiSuggestedTask {
+    id: string;
+    title: string;
+    checked: boolean;
+}
+
 const ProposalDetailModal = ({ isOpen, onClose, proposal, tasks, onSaveProposal, onAddTasksBatch, ai, onAddNotification }) => {
     if (!isOpen || !proposal) return null;
 
@@ -2553,7 +2559,7 @@ const ProposalDetailModal = ({ isOpen, onClose, proposal, tasks, onSaveProposal,
     const [improvedSummary, setImprovedSummary] = useState('');
     const [isImprovingSummary, setIsImprovingSummary] = useState(false);
     
-    const [suggestedTasks, setSuggestedTasks] = useState([]);
+    const [suggestedTasks, setSuggestedTasks] = useState<AiSuggestedTask[]>([]);
     const [isSuggestingTasks, setIsSuggestingTasks] = useState(false);
     
     useEffect(() => {
@@ -2606,7 +2612,7 @@ const ProposalDetailModal = ({ isOpen, onClose, proposal, tasks, onSaveProposal,
                 config: { responseMimeType: "application/json", responseSchema: schema }
             });
             const result = JSON.parse(response.text.trim());
-            setSuggestedTasks(result.tasks.map(task => ({ ...task, id: `sugg-${Math.random()}`, checked: true })));
+            setSuggestedTasks(result.tasks.map((task: { title: string }) => ({ ...task, id: `sugg-${Math.random()}`, checked: true })));
         } catch (err) {
             console.error("AI Task Suggestion Error:", err);
             onAddNotification({ message: 'Hiba a feladatok javaslata közben.', type: 'error' });
@@ -2615,7 +2621,7 @@ const ProposalDetailModal = ({ isOpen, onClose, proposal, tasks, onSaveProposal,
         }
     };
 
-    const handleToggleSuggestedTask = (taskId) => {
+    const handleToggleSuggestedTask = (taskId: string) => {
         setSuggestedTasks(prev => prev.map(t => t.id === taskId ? { ...t, checked: !t.checked } : t));
     };
 
@@ -3314,152 +3320,239 @@ const TrainingView = ({ trainings, onOpenTrainingModal, onSaveTraining, ai, onAd
 };
 
 const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
-    // Weekly Task Report
+    // --- States for all reports ---
     const [weekOffset, setWeekOffset] = useState(0);
+    const [monthOffset, setMonthOffset] = useState(0);
     const [taskReport, setTaskReport] = useState('');
     const [isTaskReportLoading, setIsTaskReportLoading] = useState(false);
+    const [financialReport, setFinancialReport] = useState('');
+    const [isFinancialReportLoading, setIsFinancialReportLoading] = useState(false);
+    const [projectReport, setProjectReport] = useState('');
+    const [isProjectReportLoading, setIsProjectReportLoading] = useState(false);
 
-    const { weekStart, weekEnd, weekLabel } = useMemo(() => {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = today.getMonth();
-        const date = today.getDate();
-        const dayOfWeek = today.getDay(); // 0 for Sunday
+    // --- Weekly Task Report Logic ---
+    const { weekStart, weekEnd, weekLabel, weekDays } = useMemo(() => {
+        const targetDay = new Date();
+        targetDay.setDate(targetDay.getDate() + (weekOffset * 7));
         
-        // Calculate the date of the Monday of the current week.
-        const mondayDate = date - ((dayOfWeek + 6) % 7);
+        const dayOfWeek = targetDay.getDay(); // Sunday: 0, Monday: 1
+        const diffToMonday = (dayOfWeek === 0) ? -6 : 1 - dayOfWeek;
         
-        // Calculate the date of the Monday of the target week (with offset).
-        const targetMondayDate = mondayDate + (weekOffset * 7);
+        const start = new Date(targetDay);
+        start.setDate(start.getDate() + diffToMonday);
+        start.setHours(0, 0, 0, 0);
         
-        // Create the start date object.
-        const start = new Date(year, month, targetMondayDate, 0, 0, 0, 0);
-
-        // Create the end date object.
-        const end = new Date(year, month, targetMondayDate + 6, 23, 59, 59, 999);
-
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        end.setHours(23, 59, 59, 999);
+        
         const label = `${start.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })}`;
-        return { weekStart: start, weekEnd: end, weekLabel: label };
+        
+        const days = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V'];
+        return { weekStart: start, weekEnd: end, weekLabel: label, weekDays: days };
     }, [weekOffset]);
 
-    const weeklyTasks = useMemo(() => {
-        return tasks.filter(task => {
+    const weeklyTasksData = useMemo(() => {
+        const completedThisWeek = tasks.filter(task => {
             const completedDate = task.completedAt ? new Date(task.completedAt) : null;
-            return completedDate && completedDate.getTime() >= weekStart.getTime() && completedDate.getTime() <= weekEnd.getTime();
+            return completedDate && completedDate >= weekStart && completedDate <= weekEnd;
         });
+
+        const tasksByDay = Array(7).fill(0);
+        completedThisWeek.forEach(task => {
+            const dayIndex = (new Date(task.completedAt!).getDay() + 6) % 7; // Monday is 0
+            tasksByDay[dayIndex]++;
+        });
+
+        const priorityCounts = completedThisWeek.reduce((acc, task) => {
+            acc[task.priority] = (acc[task.priority] || 0) + 1;
+            return acc;
+        }, {} as Record<TaskPriority, number>);
+        
+        return { completedThisWeek, tasksByDay, priorityCounts };
     }, [tasks, weekStart, weekEnd]);
     
     const generateTaskReport = async () => {
         setIsTaskReportLoading(true); setTaskReport('');
-        const taskSummary = weeklyTasks.map(t => `- "${t.title}" (Prioritás: ${t.priority})`).join('\n');
+        const taskSummary = weeklyTasksData.completedThisWeek.map(t => `- "${t.title}" (Prioritás: ${t.priority})`).join('\n');
         const prompt = `Te egy produktivitási coach vagy. Elemezd a felhasználó által a héten teljesített feladatokat. Írj egy rövid, 2-3 bekezdéses, motiváló és konstruktív heti értékelést. Emeld ki a sikereket, azonosítsd a mintákat (pl. sok magas prioritású feladat) és adj 1-2 tippet a következő hétre. Válaszodat magyarul add meg.\n\nHét: ${weekLabel}\n\nTeljesített feladatok:\n${taskSummary || 'Ezen a héten nem lett feladat teljesítve.'}`;
         try {
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
             setTaskReport(response.text);
         } catch (err) { console.error(err); setTaskReport('Hiba történt a riport generálása közben.'); } finally { setIsTaskReportLoading(false); }
     };
-    
-    // Monthly Financial Report
-    const [monthOffset, setMonthOffset] = useState(0);
-    const [financialReport, setFinancialReport] = useState('');
-    const [isFinancialReportLoading, setIsFinancialReportLoading] = useState(false);
 
-    const { monthStart, monthEnd, monthLabel } = useMemo(() => {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = today.getMonth();
-        const start = new Date(year, month + monthOffset, 1);
-        const end = new Date(year, month + monthOffset + 1, 0);
-        end.setHours(23, 59, 59, 999);
-        const label = start.toLocaleDateString('hu-HU', { year: 'numeric', month: 'long' });
-        return { monthStart: start, monthEnd: end, monthLabel: label };
-    }, [monthOffset]);
-    
-    const monthlyTransactions = useMemo(() => {
-        return transactions.filter(t => {
-            const tDate = new Date(t.date);
-            return tDate.getTime() >= monthStart.getTime() && tDate.getTime() <= monthEnd.getTime();
-        });
-    }, [transactions, monthStart, monthEnd]);
-    
-    const monthlySummary = useMemo(() => {
-        const income = monthlyTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-        const expense = monthlyTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-        const expenseByCategory = monthlyTransactions.filter(t => t.type === 'expense').reduce((acc, t) => {
-            acc[t.category] = (acc[t.category] || 0) + t.amount;
-            return acc;
-        }, {} as Record<FinancialCategory, number>);
-        return { income, expense, expenseByCategory };
-    }, [monthlyTransactions]);
+    // --- Monthly Financial Report Logic ---
+    const financialHistory = useMemo(() => {
+        const history = [];
+        for (let i = 2; i >= 0; i--) { // Last 3 months including current
+            const date = new Date();
+            date.setDate(1); // Avoid month-end issues
+            date.setMonth(date.getMonth() - i);
+            const year = date.getFullYear();
+            const month = date.getMonth();
 
-    const generateFinancialReport = async () => {
-        setIsFinancialReportLoading(true); setFinancialReport('');
-        const prompt = `Te egy pénzügyi elemző vagy. Elemezd a következő havi pénzügyi adatokat. Írj egy rövid, 2-3 bekezdéses összefoglalót a megadott JSON adatok alapján. Emeld ki a trendeket, a legnagyobb kiadási kategóriákat és adj 1-2 konkrét tippet a felhasználónak, hol tudna spórolni. A válaszodat magyarul add meg, és használj markdown formázást.\n\nHónap: ${monthLabel}\n\nHavi adatok:\nBevétel: ${monthlySummary.income.toLocaleString('hu-HU')} Ft\nKiadás: ${monthlySummary.expense.toLocaleString('hu-HU')} Ft\nKiadások kategóriánként: ${JSON.stringify(monthlySummary.expenseByCategory)}`;
-        
+            const monthlyTrans = transactions.filter(t => {
+                const tDate = new Date(t.date);
+                return tDate.getFullYear() === year && tDate.getMonth() === month;
+            });
+
+            const income = monthlyTrans.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const expense = monthlyTrans.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            
+            history.push({
+                label: date.toLocaleDateString('hu-HU', { month: 'short' }),
+                income,
+                expense,
+            });
+        }
+        return history;
+    }, [transactions]);
+    
+    // --- Project Report Logic ---
+    const projectSummary = useMemo(() => {
+        const activeProjects = projects.filter(p => p.status !== 'Kész');
+        const getProjectProgress = (projectId: string) => {
+            const relatedTasks = tasks.filter(t => t.projectId === projectId);
+            if (relatedTasks.length === 0) return 0;
+            const completedTasks = relatedTasks.filter(t => t.status === 'Kész').length;
+            return (completedTasks / relatedTasks.length) * 100;
+        };
+        const projectsWithProgress = activeProjects.map(p => ({ ...p, progress: getProjectProgress(p.id) }));
+        const overallProgress = activeProjects.length > 0 ? projectsWithProgress.reduce((sum, p) => sum + p.progress, 0) / activeProjects.length : 0;
+        return { activeProjects: projectsWithProgress, overallProgress };
+    }, [projects, tasks]);
+    
+    const generateProjectReport = async () => {
+        setIsProjectReportLoading(true); setProjectReport('');
+        const projectData = projectSummary.activeProjects.map(p => `- "${p.title}" (Státusz: ${p.status}, Készültség: ${Math.round(p.progress)}%)`).join('\n');
+        const prompt = `Te egy tapasztalt projektmenedzser vagy. Elemezd a következő aktív projektek listáját és állapotát. Írj egy rövid, 1-2 bekezdéses összefoglalót a projektek általános állapotáról. Emeld ki a jól haladó projekteket és azonosítsd azokat, amelyek lemaradásban lehetnek vagy kockázatot jelentenek. Adj 1-2 általános tanácsot a projektmenedzsment javítására. A válaszodat magyarul add meg.\n\nAktív projektek:\n${projectData || "Nincsenek aktív projektek."}`;
         try {
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-            setFinancialReport(response.text);
-        } catch (err) { 
-            console.error(err); 
-            setFinancialReport('Hiba történt a riport generálása közben.'); 
-        } finally { 
-            setIsFinancialReportLoading(false); 
-        }
-    };
-
-    const getProjectProgress = (projectId: string) => {
-        const relatedTasks = tasks.filter(t => t.projectId === projectId);
-        if (relatedTasks.length === 0) return 0;
-        const completedTasks = relatedTasks.filter(t => t.status === 'Kész').length;
-        return (completedTasks / relatedTasks.length) * 100;
+            setProjectReport(response.text);
+        } catch (err) { console.error(err); setProjectReport('Hiba történt a riport generálása közben.'); } finally { setIsProjectReportLoading(false); }
     };
     
+    // --- Training Report Logic ---
+    const trainingSummary = useMemo(() => {
+        const inProgress = trainings.filter(t => t.status === 'Folyamatban');
+        const completed = trainings.filter(t => t.status === 'Befejezett');
+        const avgProgress = inProgress.length > 0 ? inProgress.reduce((sum, t) => sum + t.progress, 0) / inProgress.length : 0;
+        return { inProgress, completedCount: completed.length, avgProgress };
+    }, [trainings]);
+
+    const maxWeeklyTasks = Math.max(...weeklyTasksData.tasksByDay, 1);
+    const maxFinancialValue = Math.max(...financialHistory.flatMap(m => [m.income, m.expense]), 1);
+
     return (
         <View title="Riportok" subtitle="AI-alapú elemzések a teljesítményedről és pénzügyeidről.">
-            <div className="reports-view-container">
-                <div className="card report-section">
+            <div className="reports-view-grid">
+                {/* Task Report Card */}
+                <div className="card report-card report-card-tasks">
                     <div className="report-header">
-                        <h3>Heti Teljesítmény Riport</h3>
+                        <h3>Heti Teljesítmény</h3>
                         <div className="report-controls">
                             <button onClick={() => setWeekOffset(weekOffset - 1)} className="button button-icon-only" aria-label="Előző hét"><span className="material-symbols-outlined">chevron_left</span></button>
                             <span className="report-date-label">{weekLabel}</span>
-                            <button onClick={() => setWeekOffset(weekOffset + 1)} className="button button-icon-only" aria-label="Következő hét" disabled={weekOffset >= 0}><span className="material-symbols-outlined">chevron_right</span></button>
-                            <button onClick={generateTaskReport} className="button button-secondary" disabled={isTaskReportLoading}>
-                                {isTaskReportLoading ? <span className="material-symbols-outlined progress_activity">progress_activity</span> : "Riport"}
-                            </button>
+                            <button onClick={() => setWeekOffset(weekOffset + 1)} disabled={weekOffset >= 0} className="button button-icon-only" aria-label="Következő hét"><span className="material-symbols-outlined">chevron_right</span></button>
                         </div>
                     </div>
                     <div className="report-content">
-                        {isTaskReportLoading ? (
-                            <div className="widget-placeholder"><span className="material-symbols-outlined progress_activity">progress_activity</span><p>Heti riport generálása...</p></div>
-                        ) : taskReport ? (
-                            <div className="ai-summary-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{taskReport}</ReactMarkdown></div>
-                        ) : (
-                            <div className="widget-placeholder"><span className="material-symbols-outlined">summarize</span><p>Generálj riportot a heti teljesítményedről.</p></div>
-                        )}
+                        <div className="report-chart-area">
+                            <div className="bar-chart">
+                                {weeklyTasksData.tasksByDay.map((count, index) => (
+                                    <div key={index} className="bar-wrapper">
+                                        <div className="bar" style={{ height: `${(count / maxWeeklyTasks) * 100}%` }} title={`${count} feladat`}></div>
+                                        <span className="bar-label">{weekDays[index]}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="report-metrics">
+                            <div className="report-metric"><span>Teljesített feladatok</span><strong>{weeklyTasksData.completedThisWeek.length}</strong></div>
+                            {Object.entries(weeklyTasksData.priorityCounts).map(([p, c]) => <div key={p} className="report-metric"><span>{p as string} prior.</span><strong>{c as React.ReactNode}</strong></div>)}
+                        </div>
+                        <button onClick={generateTaskReport} className="button button-secondary" disabled={isTaskReportLoading}>
+                            {isTaskReportLoading ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">psychology</span>} AI Elemzés
+                        </button>
+                        {taskReport && <div className="ai-summary-content report-ai-summary"><ReactMarkdown remarkPlugins={[remarkGfm]}>{taskReport}</ReactMarkdown></div>}
                     </div>
                 </div>
 
-                <div className="card report-section">
+                {/* Financial Report Card */}
+                <div className="card report-card report-card-finances">
                     <div className="report-header">
-                        <h3>Havi Pénzügyi Riport</h3>
-                        <div className="report-controls">
-                             <button onClick={() => setMonthOffset(monthOffset - 1)} className="button button-icon-only" aria-label="Előző hónap"><span className="material-symbols-outlined">chevron_left</span></button>
-                            <span className="report-date-label">{monthLabel}</span>
-                            <button onClick={() => setMonthOffset(monthOffset + 1)} className="button button-icon-only" aria-label="Következő hónap" disabled={monthOffset >= 0}><span className="material-symbols-outlined">chevron_right</span></button>
-                            <button onClick={generateFinancialReport} className="button button-secondary" disabled={isFinancialReportLoading}>
-                                {isFinancialReportLoading ? <span className="material-symbols-outlined progress_activity">progress_activity</span> : "Riport"}
-                            </button>
-                        </div>
+                        <h3>Pénzügyi Trendek</h3>
                     </div>
                      <div className="report-content">
-                        {isFinancialReportLoading ? (
-                             <div className="widget-placeholder"><span className="material-symbols-outlined progress_activity">progress_activity</span><p>Pénzügyi riport generálása...</p></div>
-                        ) : financialReport ? (
-                            <div className="ai-summary-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{financialReport}</ReactMarkdown></div>
-                        ) : (
-                             <div className="widget-placeholder"><span className="material-symbols-outlined">insights</span><p>Generálj riportot a havi pénzügyekről.</p></div>
-                        )}
+                        <div className="report-chart-area">
+                            <div className="bar-chart">
+                                {financialHistory.map((month, index) => (
+                                    <div key={index} className="bar-wrapper grouped">
+                                        <div className="bar-group">
+                                            <div className="bar income" style={{ height: `${(month.income / maxFinancialValue) * 100}%` }} title={`Bevétel: ${month.income.toLocaleString()} Ft`}></div>
+                                            <div className="bar expense" style={{ height: `${(month.expense / maxFinancialValue) * 100}%` }} title={`Kiadás: ${month.expense.toLocaleString()} Ft`}></div>
+                                        </div>
+                                        <span className="bar-label">{month.label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="chart-legend horizontal">
+                            <div className="legend-item"><div className="legend-color-box" style={{backgroundColor: 'var(--color-accent)'}}></div><span>Bevétel</span></div>
+                            <div className="legend-item"><div className="legend-color-box" style={{backgroundColor: 'var(--color-destructive)'}}></div><span>Kiadás</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Projects Report Card */}
+                 <div className="card report-card report-card-projects">
+                    <div className="report-header">
+                        <h3>Projekt Áttekintés</h3>
+                    </div>
+                     <div className="report-content">
+                        <div className="report-metrics">
+                           <div className="report-metric"><span>Aktív projektek</span><strong>{projectSummary.activeProjects.length}</strong></div>
+                           <div className="report-metric"><span>Átlagos készültség</span><strong>{Math.round(projectSummary.overallProgress)}%</strong></div>
+                        </div>
+                        <div className="report-item-list">
+                            {projectSummary.activeProjects.map(p => (
+                                <div key={p.id} className="report-list-item">
+                                    <span>{p.title}</span>
+                                    <div className="progress-bar-container mini">
+                                        <div className="progress-bar-fill" style={{ width: `${p.progress}%` }}></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                         <button onClick={generateProjectReport} className="button button-secondary" disabled={isProjectReportLoading}>
+                            {isProjectReportLoading ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">psychology</span>} AI Állapotfelmérés
+                        </button>
+                         {projectReport && <div className="ai-summary-content report-ai-summary"><ReactMarkdown remarkPlugins={[remarkGfm]}>{projectReport}</ReactMarkdown></div>}
+                    </div>
+                </div>
+                
+                 {/* Training Report Card */}
+                <div className="card report-card report-card-training">
+                     <div className="report-header">
+                        <h3>Képzések</h3>
+                    </div>
+                     <div className="report-content">
+                         <div className="report-metrics">
+                           <div className="report-metric"><span>Folyamatban</span><strong>{trainingSummary.inProgress.length}</strong></div>
+                           <div className="report-metric"><span>Befejezett</span><strong>{trainingSummary.completedCount}</strong></div>
+                           <div className="report-metric"><span>Átlagos haladás</span><strong>{Math.round(trainingSummary.avgProgress)}%</strong></div>
+                        </div>
+                        <div className="report-item-list">
+                            {trainingSummary.inProgress.map(t => (
+                                <div key={t.id} className="report-list-item">
+                                    <span>{t.title}</span>
+                                    <div className="progress-bar-container mini">
+                                        <div className="progress-bar-fill" style={{ width: `${t.progress}%` }}></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3541,400 +3634,4 @@ const AiContactAssistant = ({ contact, relatedItems, ai, onAddNotification }) =>
                     Piszkozat
                 </button>
                 {generatedEmail && (
-                    <div className="ai-result-box">
-                        <pre>{generatedEmail}</pre>
-                    </div>
-                )}
-            </div>
-            <div className="ai-assistant-section">
-                <h5>Interakciók összegzése</h5>
-                <p>Készítsen gyors összefoglalót a kapcsolattal folytatott legutóbbi tevékenységekről.</p>
-                <button className="button button-secondary" onClick={handleSummarize} disabled={isSummarizing}>
-                    {isSummarizing ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">summarize</span>}
-                    Összefoglalás
-                </button>
-                {summary && (
-                     <div className="ai-result-box">
-                        <p>{summary}</p>
-                    </div>
-                )}
-            </div>
-        </aside>
-    );
-};
-
-
-const ContactsView = ({ contacts, projects, proposals, emails, onOpenContactModal, ai, onAddNotification }) => {
-    const [selectedContact, setSelectedContact] = useState<Contact | null>(contacts[0] || null);
-    const [searchTerm, setSearchTerm] = useState('');
-
-    const filteredContacts = useMemo(() => {
-        return contacts.filter(contact => 
-            contact.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (contact.company && contact.company.toLowerCase().includes(searchTerm.toLowerCase()))
-        ).sort((a,b) => a.name.localeCompare(b.name));
-    }, [contacts, searchTerm]);
-
-    const relatedItems = useMemo(() => {
-        if (!selectedContact) return { relatedProjects: [], relatedProposals: [], relatedEmails: [] };
-        const relatedProjects = projects.filter(p => selectedContact.linkedProjectIds?.includes(p.id));
-        const relatedProposals = proposals.filter(p => selectedContact.linkedProposalIds?.includes(p.id));
-        const relatedEmails = emails.filter(e => e.sender === selectedContact.email || e.recipient === selectedContact.email)
-                                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        return { relatedProjects, relatedProposals, relatedEmails };
-    }, [selectedContact, projects, proposals, emails]);
-
-
-    return (
-        <View 
-            title="Kapcsolatok" 
-            subtitle="Ügyfelek, partnerek és csapattagok kezelése."
-            actions={<button className="button button-primary" onClick={() => onOpenContactModal()}><span className="material-symbols-outlined">add</span>Új Kapcsolat</button>}
-        >
-            <div className="contacts-view-layout">
-                <div className="contact-list-pane card">
-                    <div className="contact-list-header">
-                        <input 
-                            type="search" 
-                            placeholder="Keresés név vagy cég szerint..." 
-                            value={searchTerm} 
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                    <div className="contact-list-body">
-                        {filteredContacts.map(contact => (
-                            <div key={contact.id} className={`contact-list-item ${selectedContact?.id === contact.id ? 'active' : ''}`} onClick={() => setSelectedContact(contact)}>
-                                <div className="avatar-sm" title={contact.name}>{contact.name.charAt(0)}</div>
-                                <div className="contact-item-info">
-                                    <span className="contact-name">{contact.name}</span>
-                                    <span className="contact-company">{contact.company}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-                <div className="contact-detail-pane">
-                    {selectedContact ? (
-                        <>
-                            <div className="contact-details-main card">
-                                <div className="contact-detail-header">
-                                    <div className="avatar-lg">{selectedContact.name.charAt(0)}</div>
-                                    <div className="contact-header-info">
-                                        <h3>{selectedContact.name}</h3>
-                                        <p>{selectedContact.role}{selectedContact.company && ` at ${selectedContact.company}`}</p>
-                                    </div>
-                                    <button className="button button-secondary" onClick={() => onOpenContactModal(selectedContact)}>
-                                        <span className="material-symbols-outlined">edit</span> Módosítás
-                                    </button>
-                                </div>
-                                <div className="contact-info-grid">
-                                    {selectedContact.email && <div><span className="material-symbols-outlined">email</span><span>{selectedContact.email}</span></div>}
-                                    {selectedContact.phone && <div><span className="material-symbols-outlined">phone</span><span>{selectedContact.phone}</span></div>}
-                                </div>
-                                {selectedContact.notes && (
-                                    <div className="contact-notes-section">
-                                        <h4>Jegyzetek</h4>
-                                        <p>{selectedContact.notes}</p>
-                                    </div>
-                                )}
-                                {(() => {
-                                    const { relatedProjects, relatedProposals, relatedEmails } = relatedItems;
-                                    if (!relatedProjects.length && !relatedProposals.length && !relatedEmails.length) return null;
-                                    
-                                    return (
-                                        <div className="related-items-section">
-                                            <h4>Kapcsolódó Elemek</h4>
-                                            {relatedProjects.length > 0 && (
-                                                <div className="related-list">
-                                                    <h5>Projektek</h5>
-                                                    <ul>{relatedProjects.map(p => <li key={p.id}><span className="material-symbols-outlined">schema</span>{p.title}</li>)}</ul>
-                                                </div>
-                                            )}
-                                            {relatedProposals.length > 0 && (
-                                                <div className="related-list">
-                                                    <h5>Pályázatok</h5>
-                                                    <ul>{relatedProposals.map(p => <li key={p.id}><span className="material-symbols-outlined">description</span>{p.title}</li>)}</ul>
-                                                </div>
-                                            )}
-                                            {relatedEmails.length > 0 && (
-                                                <div className="related-list">
-                                                    <h5>Emailek</h5>
-                                                    <ul>{relatedEmails.slice(0, 5).map(e => <li key={e.id} title={e.subject}><span className="material-symbols-outlined">mail</span>{e.subject}</li>)}</ul>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-                            <AiContactAssistant 
-                                contact={selectedContact}
-                                relatedItems={relatedItems}
-                                ai={ai}
-                                onAddNotification={onAddNotification}
-                            />
-                        </>
-                    ) : (
-                        <div className="widget-placeholder card" style={{gridColumn: '1 / -1'}}>
-                            <span className="material-symbols-outlined">person_search</span>
-                            <p>Válasszon ki egy kapcsolatot a részletek megtekintéséhez.</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </View>
-    );
-};
-
-const GlobalHeader = ({ onToggleNav, onOpenSearch }) => (
-    <header className="global-header">
-        <button onClick={onToggleNav} className="button button-icon-only mobile-nav-toggle">
-            <span className="material-symbols-outlined">menu</span>
-        </button>
-        <div className="search-bar-container" onClick={onOpenSearch}>
-            <span className="material-symbols-outlined">search</span>
-            <span className="search-bar-text">Keresés...</span>
-            <div className="search-shortcut">
-                <kbd>Ctrl</kbd>+<kbd>K</kbd>
-            </div>
-        </div>
-        <div className="header-actions">
-            <button className="button button-icon-only">
-                <span className="material-symbols-outlined">notifications</span>
-            </button>
-             <div className="user-profile">
-                <div className="avatar-sm">F</div>
-            </div>
-        </div>
-    </header>
-);
-
-const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNotification }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [results, setResults] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const inputRef = useRef(null);
-
-    useEffect(() => {
-        if (isOpen) {
-            setTimeout(() => inputRef.current?.focus(), 100);
-        } else {
-            setSearchTerm('');
-            setResults(null);
-            setIsLoading(false);
-        }
-    }, [isOpen]);
-
-    const handleSearch = async (e) => {
-        e.preventDefault();
-        if (!searchTerm.trim()) return;
-        setIsLoading(true);
-
-        const prompt = `A felhasználó a P-Day Light alkalmazásban keres. A keresési kifejezés: "${searchTerm}". Keresd meg a releváns elemeket a megadott adathalmazokból. Ha a keresés általános tudás jellegű (pl. "mi a fővárosa..."), akkor használd a googleSearch eszközt. Válaszodban mindig add meg az elem típusát.`;
-
-        const dataContext = `
-            Feladatok: ${JSON.stringify(allData.tasks.map(t => ({ id: t.id, title: t.title, status: t.status })))}
-            Projektek: ${JSON.stringify(allData.projects.map(p => ({ id: p.id, title: p.title })))}
-            Dokumentumok: ${JSON.stringify(allData.docs.map(d => ({ id: d.id, title: d.title, type: d.type })))}
-            Pályázatok: ${JSON.stringify(allData.proposals.map(p => ({ id: p.id, title: p.title })))}
-            Kapcsolatok: ${JSON.stringify(allData.contacts.map(c => ({ id: c.id, name: c.name })))}
-        `;
-
-        const fullPrompt = `${prompt}\n\nReleváns adatok:\n${dataContext}`;
-
-        try {
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: fullPrompt,
-                config: { tools: [{ googleSearch: {} }] },
-            });
-            setResults(response);
-        } catch (err) {
-            console.error("Global search error:", err);
-            onAddNotification({ message: 'Hiba a keresés során.', type: 'error' });
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    
-    const handleResultClick = (result) => {
-        const title = result.title || result.web?.title;
-        if (!title) return;
-
-        const findAndNav = (items, viewId, key = 'title') => {
-            const item = items.find(i => (i[key] || '').toLowerCase() === title.toLowerCase());
-            if (item) {
-                onNavigate(viewId, { id: item.id });
-                onClose();
-                return true;
-            }
-            return false;
-        };
-
-        if (findAndNav(allData.tasks, 'tasks')) return;
-        if (findAndNav(allData.projects, 'projects')) return;
-        if (findAndNav(allData.docs, 'docs')) return;
-        if (findAndNav(allData.proposals, 'proposals')) return;
-        if (findAndNav(allData.contacts, 'contacts', 'name')) return;
-        
-        onAddNotification({ message: 'Navigáció ehhez az elemhez még nem implementált.', type: 'info' });
-    };
-
-    if (!isOpen) return null;
-    
-    const groundingChunks = results?.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    
-    return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content card global-search-modal" onClick={e => e.stopPropagation()}>
-                <form onSubmit={handleSearch}>
-                    <div className="search-input-wrapper">
-                        <span className="material-symbols-outlined">search</span>
-                        <input ref={inputRef} type="search" placeholder="AI Keresés..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                    </div>
-                </form>
-                <div className="search-results-container">
-                    {isLoading && (
-                        <div className="widget-placeholder" style={{ background: 'transparent' }}>
-                            <span className="material-symbols-outlined progress_activity">progress_activity</span>
-                            <p>Keresés...</p>
-                        </div>
-                    )}
-                    {!isLoading && results && (
-                        <div className="search-results-list">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{results.text}</ReactMarkdown>
-                            {groundingChunks && groundingChunks.length > 0 && (
-                                <div className="grounding-chunks">
-                                    <h4>Források</h4>
-                                    <ul>
-                                        {groundingChunks.map((chunk, index) => (
-                                            <li key={index}>
-                                                <a href={chunk.web.uri} target="_blank" rel="noopener noreferrer">{chunk.web.title}</a>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const EmailComposeModal = ({ isOpen, onClose, onSend, initialData, ai, onAddNotification }) => {
-    const [recipient, setRecipient] = useState('');
-    const [subject, setSubject] = useState('');
-    const [body, setBody] = useState('');
-    
-    const [aiPrompt, setAiPrompt] = useState('');
-    const [generatedDraft, setGeneratedDraft] = useState('');
-    const [isGenerating, setIsGenerating] = useState(false);
-
-    useEffect(() => {
-        if (isOpen) {
-            if (initialData?.mode === 'reply' && initialData.originalEmail) {
-                const original = initialData.originalEmail;
-                setRecipient(original.sender);
-                setSubject(original.subject.startsWith('Re: ') ? original.subject : `Re: ${original.subject}`);
-                setBody(`\n\n---\nOn ${new Date(original.timestamp).toLocaleString()}, ${original.sender} wrote:\n> ${original.body.replace(/\n/g, '\n> ')}`);
-            } else {
-                setRecipient('');
-                setSubject('');
-                setBody('');
-            }
-            setAiPrompt('');
-            setGeneratedDraft('');
-        }
-    }, [isOpen, initialData]);
-
-    if (!isOpen) return null;
-
-    const handleGenerateDraft = async () => {
-        if (!aiPrompt.trim()) return;
-        setIsGenerating(true);
-        setGeneratedDraft('');
-        const prompt = `Te egy profi üzleti asszisztens vagy. Írj egy udvarias, professzionális emailt a következő utasítások alapján. A válaszodban csak magát az email szövegét add vissza, mindenféle bevezető vagy magyarázat nélkül.\n\nUtasítás: "${aiPrompt}"`;
-        try {
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-            setGeneratedDraft(response.text);
-        } catch (err) {
-            console.error("AI Email Draft Error:", err);
-            onAddNotification({ message: 'Hiba a piszkozat generálása közben.', type: 'error' });
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-    
-    const handleUseDraft = () => {
-        setBody(generatedDraft);
-        setGeneratedDraft('');
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!recipient.trim() || !subject.trim()) return;
-        onSend({ recipient, subject, body });
-        onClose();
-    };
-
-    return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content card email-compose-modal" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h3>Új Email</h3>
-                    <button onClick={onClose} className="button-icon-close">&times;</button>
-                </div>
-                <div className="email-compose-body">
-                    <form onSubmit={handleSubmit} className="email-compose-form">
-                        <div className="form-group">
-                            <label htmlFor="email-recipient">Címzett</label>
-                            <input id="email-recipient" type="email" value={recipient} onChange={e => setRecipient(e.target.value)} required />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="email-subject">Tárgy</label>
-                            <input id="email-subject" type="text" value={subject} onChange={e => setSubject(e.target.value)} required />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="email-body">Üzenet</label>
-                            <textarea id="email-body" value={body} onChange={e => setBody(e.target.value)} rows={10}></textarea>
-                        </div>
-                        <div className="modal-actions">
-                            <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
-                            <button type="submit" className="button button-primary">Küldés</button>
-                        </div>
-                    </form>
-                    <aside className="ai-email-assistant card">
-                        <h4><span className="material-symbols-outlined">psychology</span>AI Email Asszisztens</h4>
-                        <div className="ai-assistant-section">
-                            <label htmlFor="ai-email-prompt">Piszkozat generálása</label>
-                            <textarea
-                                id="ai-email-prompt"
-                                value={aiPrompt}
-                                onChange={e => setAiPrompt(e.target.value)}
-                                placeholder="Írja le röviden, miről szóljon az email..."
-                                rows={3}
-                                disabled={isGenerating}
-                            />
-                            <button className="button button-secondary" onClick={handleGenerateDraft} disabled={isGenerating || !aiPrompt.trim()}>
-                                {isGenerating ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">edit_note</span>}
-                                Piszkozat
-                            </button>
-                            {generatedDraft && (
-                                <div className="ai-result-box">
-                                    <pre>{generatedDraft}</pre>
-                                    <button className="button button-primary" onClick={handleUseDraft} style={{width: '100%', marginTop: 'var(--spacing-md)'}}>
-                                        Piszkozat használata
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </aside>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+                    <
