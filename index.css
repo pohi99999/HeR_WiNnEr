@@ -464,4 +464,80 @@ label { font-weight: var(--font-weight-semibold); font-size: 0.9rem; color: var(
 .task-kanban-subtasks {
     display: flex;
     align-items: center;
-    
+/* Project Detail Modal */
+.project-detail-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+.project-details-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--spacing-xl);
+}
+.project-details-grid h4 {
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--spacing-sm);
+}
+.project-details-grid p {
+    color: var(--color-text-primary);
+}
+.project-meta-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+.project-progress-section h4 {
+     margin-bottom: var(--spacing-sm);
+}
+.related-tasks-section h4 {
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--color-border);
+}
+.related-tasks-section .task-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    max-height: 250px;
+    overflow-y: auto;
+    padding-right: var(--spacing-sm);
+}
+.task-item-title-container {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    background: var(--color-surface-glass);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius-md);
+}
+.task-item-title-container .material-symbols-outlined {
+    color: var(--color-text-tertiary);
+}
+.task-item-title-container .material-symbols-outlined.check_circle {
+    color: var(--color-accent);
+}
+.task-item-title-container .task-item-title {
+    flex-grow: 1;
+}
+.task-item-title-container .task-item-title.completed {
+    text-decoration: line-through;
+    color: var(--color-text-tertiary);
+}
+.task-item-title-container .priority-pill {
+    flex-shrink: 0;
+}
+
+/* Project Card Interactivity */
+.project-card {
+    cursor: pointer;
+    transition: transform var(--transition-std), box-shadow var(--transition-std);
+}
+.project-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: var(--shadow-lg);
+}

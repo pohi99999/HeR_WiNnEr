@@ -469,17 +469,107 @@ const PlannerView = ({ events, onOpenEventModal, onOpenDayModal }: { events: Pla
 
 
 // --- MODALS ---
-const TaskModal = ({ isOpen, onClose, onAddTask, initialData = null }) => {
-    const [title, setTitle] = useState(''); const [description, setDescription] = useState(''); const [dueDate, setDueDate] = useState(''); const [priority, setPriority] = useState<TaskPriority>('Közepes');
+const TaskModal = ({ isOpen, onClose, onSaveTask, initialData = null, defaultValues = {} }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSaveTask: (task: any) => void;
+    initialData?: TaskItem | null;
+    defaultValues?: {
+        category?: TaskCategory;
+        projectId?: string;
+    };
+}) => {
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [dueDate, setDueDate] = useState('');
+    const [priority, setPriority] = useState<TaskPriority>('Közepes');
+    const [category, setCategory] = useState<TaskCategory>('Személyes');
+    const [projectId, setProjectId] = useState<string | undefined>(undefined);
+
     useEffect(() => {
         if (isOpen) {
-            if (initialData) { setTitle(initialData.title || ''); setDescription(initialData.description || ''); setDueDate(initialData.dueDate ? initialData.dueDate.split('T')[0] : ''); setPriority(initialData.priority || 'Közepes'); }
-            else { setTitle(''); setDescription(''); setDueDate(''); setPriority('Közepes'); }
+            if (initialData) {
+                setTitle(initialData.title || '');
+                setDescription(initialData.description || '');
+                setDueDate(initialData.dueDate ? initialData.dueDate.split('T')[0] : '');
+                setPriority(initialData.priority || 'Közepes');
+                setCategory(initialData.category || 'Személyes');
+                setProjectId(initialData.projectId);
+            } else {
+                setTitle('');
+                setDescription('');
+                setDueDate('');
+                setPriority('Közepes');
+                setCategory(defaultValues.category || 'Személyes');
+                setProjectId(defaultValues.projectId);
+            }
         }
-    }, [initialData, isOpen]);
+    }, [initialData, defaultValues, isOpen]);
+
     if (!isOpen) return null;
-    const handleSubmit = (e) => { e.preventDefault(); if (!title.trim()) return; onAddTask({ title: title.trim(), description: description.trim(), dueDate, priority, category: 'Személyes' }); onClose(); };
-    return ( <div className="modal-overlay" onClick={() => onClose()}> <div className="modal-content card" onClick={e => e.stopPropagation()}> <div className="modal-header"> <h3>{initialData ? "Feladat Módosítása" : "Új Feladat Létrehozása"}</h3> <button onClick={() => onClose()} className="button-icon-close">&times;</button> </div> <form onSubmit={handleSubmit} className="modal-form"> <div className="form-group"><label htmlFor="task-title">Cím</label><input id="task-title" type="text" value={title} onChange={e => setTitle(e.target.value)} required /></div> <div className="form-group"><label htmlFor="task-description">Leírás</label><textarea id="task-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}></textarea></div> <div className="form-group-inline"> <div className="form-group"><label htmlFor="task-duedate">Határidő</label><input id="task-duedate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} /></div> <div className="form-group"><label htmlFor="task-priority">Prioritás</label><select id="task-priority" value={priority} onChange={e => setPriority(e.target.value as TaskPriority)}><option value="Alacsony">Alacsony</option><option value="Közepes">Közepes</option><option value="Magas">Magas</option><option value="Kritikus">Kritikus</option></select></div></div> <div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => onClose()}>Mégse</button><button type="submit" className="button button-primary">Feladat Mentése</button></div> </form> </div> </div> );
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        onSaveTask({ 
+            id: initialData?.id,
+            title: title.trim(), 
+            description: description.trim(), 
+            dueDate, 
+            priority, 
+            category,
+            projectId,
+        });
+        onClose();
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>{initialData ? "Feladat Módosítása" : "Új Feladat Létrehozása"}</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <form onSubmit={handleSubmit} className="modal-form">
+                    <div className="form-group">
+                        <label htmlFor="task-title">Cím</label>
+                        <input id="task-title" type="text" value={title} onChange={e => setTitle(e.target.value)} required />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="task-description">Leírás</label>
+                        <textarea id="task-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}></textarea>
+                    </div>
+                    <div className="form-group-inline">
+                        <div className="form-group">
+                            <label htmlFor="task-duedate">Határidő</label>
+                            <input id="task-duedate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="task-priority">Prioritás</label>
+                            <select id="task-priority" value={priority} onChange={e => setPriority(e.target.value as TaskPriority)}>
+                                <option value="Alacsony">Alacsony</option>
+                                <option value="Közepes">Közepes</option>
+                                <option value="Magas">Magas</option>
+                                <option value="Kritikus">Kritikus</option>
+                            </select>
+                        </div>
+                    </div>
+                     <div className="form-group">
+                        <label htmlFor="task-category">Kategória</label>
+                        <select id="task-category" value={category} onChange={e => setCategory(e.target.value as TaskCategory)} disabled={!!projectId}>
+                             {Object.values(['Munka', 'Személyes', 'Projekt', 'Tanulás', 'Ügyfél', 'Email', 'Pályázat']).map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="modal-actions">
+                        <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
+                        <button type="submit" className="button button-primary">Feladat Mentése</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 };
 
 const EventModal = ({ isOpen, onClose, onAddEvent, initialDate = '' }) => {
@@ -1672,6 +1762,8 @@ const App = () => {
     
     const [isTaskModalOpen, setTaskModalOpen] = useState(false);
     const [taskToEdit, setTaskToEdit] = useState<TaskItem | null>(null);
+    const [taskDefaultValues, setTaskDefaultValues] = useState({});
+
 
     const [isEventModalOpen, setEventModalOpen] = useState(false);
     const [eventInitialDate, setEventInitialDate] = useState<string | undefined>(undefined);
@@ -1690,6 +1782,8 @@ const App = () => {
 
     const [isContactModalOpen, setContactModalOpen] = useState(false);
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
+    
+    const [selectedProjectForDetail, setSelectedProjectForDetail] = useState<Project | null>(null);
 
     const [notifications, setNotifications] = useState<Notification[]>([]);
     
@@ -1736,8 +1830,9 @@ const App = () => {
         setNotifications(prev => prev.filter(n => n.id !== id));
     };
 
-    const handleOpenTaskModal = (task = null) => {
+    const handleOpenTaskModal = (task = null, defaultValues = {}) => {
         setTaskToEdit(task);
+        setTaskDefaultValues(defaultValues);
         setTaskModalOpen(true);
     };
     
@@ -1751,20 +1846,27 @@ const App = () => {
         setDayDetailModalOpen(true);
     };
 
-    const handleAddTask = useCallback((taskData) => {
-        const newTask: TaskItem = {
-            id: `task-${Date.now()}`,
-            title: taskData.title,
-            description: taskData.description,
-            dueDate: taskData.dueDate,
-            priority: taskData.priority || 'Közepes',
-            category: taskData.category || 'Személyes',
-            status: 'Teendő',
-            createdAt: new Date().toISOString(),
-        };
-        setTasks(prev => [newTask, ...prev]);
-        handleAddNotification({ message: 'Feladat sikeresen létrehozva!', type: 'success' });
+    const handleSaveTask = useCallback((taskData) => {
+        if (taskData.id) { // Editing existing task
+            setTasks(prev => prev.map(t => t.id === taskData.id ? { ...t, ...taskData } : t));
+            handleAddNotification({ message: 'Feladat sikeresen frissítve!', type: 'success' });
+        } else { // Creating new task
+            const newTask: TaskItem = {
+                id: `task-${Date.now()}`,
+                title: taskData.title,
+                description: taskData.description,
+                dueDate: taskData.dueDate,
+                priority: taskData.priority || 'Közepes',
+                category: taskData.category || 'Személyes',
+                status: 'Teendő',
+                createdAt: new Date().toISOString(),
+                projectId: taskData.projectId,
+            };
+            setTasks(prev => [newTask, ...prev]);
+            handleAddNotification({ message: 'Feladat sikeresen létrehozva!', type: 'success' });
+        }
     }, [handleAddNotification]);
+
     
     const handleAddEvent = (eventData: Omit<PlannerEvent, 'id'>) => {
         const newEvent: PlannerEvent = {
@@ -1873,6 +1975,10 @@ const App = () => {
         setContactToEdit(contact);
         setContactModalOpen(true);
     };
+    
+    const handleOpenProjectDetail = (project: Project) => {
+        setSelectedProjectForDetail(project);
+    };
 
     const handleSaveContact = (contactData) => {
         if (contactData.id) {
@@ -1907,8 +2013,8 @@ const App = () => {
             case 'dashboard': return <DashboardView tasks={tasks} events={plannerEvents} emails={mockEmails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal}/>;
             case 'tasks': return <TasksView tasks={tasks} setTasks={setTasks} onOpenTaskModal={handleOpenTaskModal} onAddNotification={handleAddNotification} />;
             case 'planner': return <PlannerView events={plannerEvents} onOpenEventModal={handleOpenEventModal} onOpenDayModal={handleOpenDayModal} />;
-            case 'email': return <EmailView ai={ai} onAddTask={handleAddTask} onAddNotification={handleAddNotification} />;
-            case 'projects': return <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} />;
+            case 'email': return <EmailView ai={ai} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />;
+            case 'projects': return <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} onProjectClick={handleOpenProjectDetail} />;
             case 'proposals': return <ProposalsView proposals={proposals} tasks={tasks} onOpenProposalModal={() => setProposalModalOpen(true)} />;
             case 'finances': return <FinancesView transactions={transactions} ai={ai} onOpenTransactionModal={() => setTransactionModalOpen(true)} />;
             case 'docs': return <DocsView docs={docs} onImageClick={(src) => { setImageModalSrc(src); setImageModalOpen(true); }} onNoteClick={(docId) => handleNavigate('doc-editor', { docId })} onAddNote={() => { const newDocId = `doc-${Date.now()}`; setDocs(prev => [{id: newDocId, type: 'note', title: 'Új jegyzet', content: '', createdAt: new Date().toISOString()}, ...prev]); handleNavigate('doc-editor', { docId: newDocId }); }} />;
@@ -1919,7 +2025,7 @@ const App = () => {
             case 'training': return <TrainingView trainings={trainings} onOpenTrainingModal={handleOpenTrainingModal} onSaveTraining={handleSaveTraining} ai={ai} onAddNotification={handleAddNotification} />;
             case 'contacts': return <ContactsView contacts={contacts} projects={projects} proposals={proposals} emails={mockEmails} onOpenContactModal={handleOpenContactModal} ai={ai} onAddNotification={handleAddNotification} />;
             case 'reports': return <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />;
-            case 'ai-chat': return <AiChatView ai={ai} tasks={tasks} onAddTask={handleAddTask} onAddNotification={handleAddNotification} />;
+            case 'ai-chat': return <AiChatView ai={ai} tasks={tasks} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />;
             case 'ai-creative': return <AiCreativeView ai={ai} onSaveToDocs={handleSaveImageToDocs} onAddNotification={handleAddNotification} />;
             default: return <DashboardView tasks={tasks} events={plannerEvents} emails={mockEmails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal}/>;
         }
@@ -1962,8 +2068,9 @@ const App = () => {
             <TaskModal
                 isOpen={isTaskModalOpen}
                 onClose={() => setTaskModalOpen(false)}
-                onAddTask={handleAddTask}
+                onSaveTask={handleSaveTask}
                 initialData={taskToEdit}
+                defaultValues={taskDefaultValues}
             />
 
             <EventModal
@@ -1979,6 +2086,14 @@ const App = () => {
                 date={dayDetailModalData?.date}
                 events={dayDetailModalData?.events || []}
                 onOpenEventModal={handleOpenEventModal}
+            />
+            
+            <ProjectDetailModal 
+                isOpen={!!selectedProjectForDetail}
+                onClose={() => setSelectedProjectForDetail(null)}
+                project={selectedProjectForDetail}
+                tasks={tasks}
+                onOpenTaskModal={handleOpenTaskModal}
             />
 
             <TransactionModal
@@ -2205,11 +2320,8 @@ const EmailView = ({ ai, onAddTask, onAddNotification }) => {
     );
 };
 
-const ProjectsView = ({ projects, tasks, ai, onAddNotification, onOpenProjectModal, onOpenAiProjectModal }) => {
+const ProjectsView = ({ projects, tasks, ai, onAddNotification, onOpenProjectModal, onOpenAiProjectModal, onProjectClick }) => {
     const statuses: ProjectStatus[] = ['Tervezés', 'Fejlesztés', 'Tesztelés', 'Kész'];
-    const [projectForSummary, setProjectForSummary] = useState<Project | null>(null);
-    const [summary, setSummary] = useState<string>('');
-    const [isLoadingSummary, setIsLoadingSummary] = useState(false);
 
     const getProjectProgress = (projectId: string) => {
         const relatedTasks = tasks.filter(t => t.projectId === projectId);
@@ -2228,29 +2340,6 @@ const ProjectsView = ({ projects, tasks, ai, onAddNotification, onOpenProjectMod
         });
         return grouped;
     }, [projects]);
-    
-    const handleGenerateSummary = async (project: Project) => {
-        if (!project) return;
-        setProjectForSummary(project);
-        setIsLoadingSummary(true);
-        setSummary('');
-
-        const relatedTasks = tasks.filter(t => t.projectId === project.id);
-        const taskSummary = relatedTasks.map(t => `- ${t.title} (Státusz: ${t.status}, Prioritás: ${t.priority})`).join('\n');
-        
-        const prompt = `Te egy tapasztalt projektmenedzser vagy. Adj egy rövid, egy-két bekezdéses, emberi hangvételű összefoglalót a projekt jelenlegi állásáról a megadott adatok alapján. Emeld ki a haladást, a lehetséges kockázatokat és a következő fontos lépéseket. A válaszodat magyarul add meg.\n\nProjekt: ${project.title}\nLeírás: ${project.description}\nStátusz: ${project.status}\nCsapattagok: ${project.team.join(', ')}\n\nFeladatok:\n${taskSummary || "Nincsenek még feladatok a projekthez."}`;
-        
-        try {
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-            setSummary(response.text);
-        } catch (err) {
-            console.error("AI Summary Error:", err);
-            onAddNotification({ message: 'Hiba történt az összefoglaló generálása közben.', type: 'error' });
-            setSummary("Hiba az összefoglaló generálása során.");
-        } finally {
-            setIsLoadingSummary(false);
-        }
-    };
 
     return (
         <View 
@@ -2279,7 +2368,7 @@ const ProjectsView = ({ projects, tasks, ai, onAddNotification, onOpenProjectMod
                                 {(projectsByStatus[status] || []).map(project => {
                                     const progress = getProjectProgress(project.id);
                                     return (
-                                        <div key={project.id} className="project-card card">
+                                        <div key={project.id} className="project-card card" onClick={() => onProjectClick(project)}>
                                             <h4>{project.title}</h4>
                                             {project.team.length > 0 &&
                                                 <div className="team-avatars">
@@ -2297,28 +2386,6 @@ const ProjectsView = ({ projects, tasks, ai, onAddNotification, onOpenProjectMod
                                             <div className="progress-bar-container">
                                                 <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
                                             </div>
-                                             <div className="project-ai-summary-container">
-                                                <div className="project-ai-summary-header">
-                                                    <h4><span className="material-symbols-outlined">psychology</span>AI Összefoglaló</h4>
-                                                    <button 
-                                                        className="button button-icon-only" 
-                                                        onClick={() => handleGenerateSummary(project)}
-                                                        disabled={isLoadingSummary && projectForSummary?.id === project.id}
-                                                    >
-                                                        <span className={`material-symbols-outlined ${isLoadingSummary && projectForSummary?.id === project.id ? 'progress_activity' : 'refresh'}`}>
-                                                            {isLoadingSummary && projectForSummary?.id === project.id ? 'progress_activity' : 'refresh'}
-                                                        </span>
-                                                    </button>
-                                                </div>
-                                                {projectForSummary?.id === project.id && (isLoadingSummary || summary) && (
-                                                    <div className="ai-summary-content">
-                                                        {isLoadingSummary 
-                                                            ? <div className="widget-placeholder" style={{padding: 'var(--spacing-sm)', background: 'transparent'}}><span className="material-symbols-outlined progress_activity">progress_activity</span><p>Elemzés...</p></div>
-                                                            : <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
-                                                        }
-                                                    </div>
-                                                )}
-                                            </div>
                                         </div>
                                     );
                                 })}
@@ -2328,6 +2395,87 @@ const ProjectsView = ({ projects, tasks, ai, onAddNotification, onOpenProjectMod
                 </div>
             </div>
         </View>
+    );
+};
+
+const ProjectDetailModal = ({ isOpen, onClose, project, tasks, onOpenTaskModal }) => {
+    if (!isOpen || !project) return null;
+
+    const relatedTasks = tasks.filter(t => t.projectId === project.id);
+    const completedTasks = relatedTasks.filter(t => t.status === 'Kész').length;
+    const progress = relatedTasks.length > 0 ? (completedTasks / relatedTasks.length) * 100 : 0;
+
+    const handleAddTaskClick = () => {
+        onOpenTaskModal(null, { projectId: project.id, category: 'Projekt' });
+        onClose();
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card" style={{ maxWidth: '800px' }} onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>{project.title}</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <div className="project-detail-modal-body">
+                    <div className="project-details-grid">
+                        <div>
+                            <h4>Leírás</h4>
+                            <p>{project.description || "Nincs leírás megadva."}</p>
+                        </div>
+                        <div className="project-meta-grid">
+                            <div>
+                                <h4>Státusz</h4>
+                                <span className="task-pill pill-status">{project.status}</span>
+                            </div>
+                            <div>
+                                <h4>Határidő</h4>
+                                <p>{formatDate(project.dueDate)}</p>
+                            </div>
+                             <div>
+                                <h4>Csapat</h4>
+                                <div className="team-avatars">
+                                    {project.team.map(member => (
+                                        <div key={member} className="avatar-sm" title={member}>
+                                            {member.charAt(0).toUpperCase()}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="project-progress-section">
+                        <h4>Haladás ({Math.round(progress)}%)</h4>
+                        <div className="progress-bar-container">
+                            <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
+                        </div>
+                    </div>
+                    
+                    <div className="related-tasks-section">
+                        <h4>Kapcsolódó feladatok ({relatedTasks.length})</h4>
+                        <div className="task-list">
+                            {relatedTasks.length > 0 ? (
+                                relatedTasks.map(task => (
+                                    <div key={task.id} className="task-item-title-container">
+                                        <span className={`material-symbols-outlined ${task.status === 'Kész' ? 'check_circle' : 'radio_button_unchecked'}`}>{task.status === 'Kész' ? 'check_circle' : 'radio_button_unchecked'}</span>
+                                        <span className={`task-item-title ${task.status === 'Kész' ? 'completed' : ''}`}>{task.title}</span>
+                                        <span className={`task-pill priority-pill ${getPriorityClass(task.priority)}`}>{task.priority}</span>
+                                    </div>
+                                ))
+                            ) : (
+                                <p>Nincsenek még feladatok ehhez a projekthez.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                 <div className="modal-actions">
+                    <button type="button" className="button button-primary" onClick={handleAddTaskClick}>
+                       <span className="material-symbols-outlined">add_task</span> Új feladat hozzáadása
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 };
 
@@ -2893,20 +3041,24 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
     const [isTaskReportLoading, setIsTaskReportLoading] = useState(false);
 
     const { weekStart, weekEnd, weekLabel } = useMemo(() => {
-        const tempDate = new Date();
-        tempDate.setHours(0, 0, 0, 0);
-        tempDate.setDate(tempDate.getDate() + weekOffset * 7);
-
-        // Find the Monday of that week. Day 0 is Sunday.
-        const dayOfWeek = tempDate.getDay();
-        const diffToMonday = tempDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        const today = new Date();
+        const currentDay = today.getDay(); // Sunday is 0, Monday is 1, etc.
+        // Calculate days to subtract to get to the previous Monday
+        const daysSinceMonday = (currentDay + 6) % 7;
         
-        const start = new Date(tempDate.setDate(diffToMonday));
-        start.setHours(0,0,0,0);
+        // Get the Monday of the current week as a starting point
+        const mondayOfThisWeek = new Date(today);
+        mondayOfThisWeek.setDate(today.getDate() - daysSinceMonday);
+        
+        // Apply the offset to get the target week's Monday
+        const start = new Date(mondayOfThisWeek);
+        start.setDate(start.getDate() + (weekOffset * 7));
+        start.setHours(0, 0, 0, 0);
 
+        // Calculate the end of the week (Sunday)
         const end = new Date(start);
-        end.setDate(start.getDate() + 6); // Add 6 days to get Sunday
-        end.setHours(23, 59, 59, 999); // Set to the end of Sunday
+        end.setDate(start.getDate() + 6);
+        end.setHours(23, 59, 59, 999);
 
         const label = `${start.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })}`;
         return { weekStart: start, weekEnd: end, weekLabel: label };
