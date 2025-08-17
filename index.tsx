@@ -2006,7 +2006,7 @@ const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNoti
                     ...prev, 
                     web: { 
                         answer: response.text, 
-                        sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || []
+                        sources: (response.candidates?.[0]?.groundingMetadata?.groundingChunks as any[]) || []
                     } 
                 }));
             } catch (err) {
@@ -2166,7 +2166,8 @@ const App = () => {
 
     const [notifications, setNotifications] = useState<Notification[]>([]);
     
-    const [activeDoc, setActiveDoc] = useState(null);
+    const [isDocEditorModalOpen, setDocEditorModalOpen] = useState(false);
+    const [docToEdit, setDocToEdit] = useState<DocItem | null>(null);
     const [isImageModalOpen, setImageModalOpen] = useState(false);
     const [imageModalSrc, setImageModalSrc] = useState('');
     
@@ -2396,11 +2397,37 @@ const App = () => {
         setContactModalOpen(false);
     };
 
-    const handleUpdateDoc = (docId, newTitle, newContent) => {
+    const handleOpenDocEditor = (doc: DocItem | null) => {
+        if (doc) {
+            setDocToEdit(doc);
+        } else { // New note
+            const newDoc: DocItem = {
+                id: `doc-${Date.now()}`,
+                type: 'note',
+                title: 'Új jegyzet',
+                content: '',
+                createdAt: new Date().toISOString(),
+            };
+            setDocs(prev => [newDoc, ...prev]);
+            setDocToEdit(newDoc);
+        }
+        setDocEditorModalOpen(true);
+    };
+
+    const handleSaveDoc = (docId: string, newTitle: string, newContent: string) => {
         setDocs(prevDocs => prevDocs.map(doc =>
             doc.id === docId ? { ...doc, title: newTitle, content: newContent } : doc
         ));
+        setDocEditorModalOpen(false);
+        handleAddNotification({ message: 'Dokumentum mentve!', type: 'success' });
     };
+    
+    const handleDeleteDoc = (docId: string) => {
+        setDocs(prev => prev.filter(doc => doc.id !== docId));
+        setDocEditorModalOpen(false); // Ensure modal is closed if the doc was open
+        handleAddNotification({ message: 'Dokumentum törölve!', type: 'success' });
+    };
+
 
     const handleOpenEmailComposeModal = (data = null) => {
         setEmailComposeData(data);
@@ -2439,11 +2466,7 @@ const App = () => {
             case 'projects': return <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} onProjectClick={handleOpenProjectDetail} />;
             case 'proposals': return <ProposalsView proposals={proposals} setProposals={setProposals} tasks={tasks} onOpenProposalModal={() => setProposalModalOpen(true)} onProposalClick={handleOpenProposalDetail} onAddNotification={handleAddNotification} />;
             case 'finances': return <FinancesView transactions={transactions} ai={ai} onOpenTransactionModal={() => setTransactionModalOpen(true)} />;
-            case 'docs': return <DocsView docs={docs} onImageClick={(src) => { setImageModalSrc(src); setImageModalOpen(true); }} onNoteClick={(docId) => handleNavigate('doc-editor', { docId })} onAddNote={() => { const newDocId = `doc-${Date.now()}`; setDocs(prev => [{id: newDocId, type: 'note', title: 'Új jegyzet', content: '', createdAt: new Date().toISOString()}, ...prev]); handleNavigate('doc-editor', { docId: newDocId }); }} />;
-            case 'doc-editor': {
-                const docToEdit = docs.find(d => d.id === activeView.params.docId);
-                return docToEdit ? <DocEditorView doc={docToEdit} onSave={handleUpdateDoc} onBack={() => handleNavigate('docs')} ai={ai} /> : <View title="Hiba" subtitle="A dokumentum nem található." />;
-            }
+            case 'docs': return <DocsView docs={docs} onImageClick={(src) => { setImageModalSrc(src); setImageModalOpen(true); }} onOpenEditor={handleOpenDocEditor} onDeleteDoc={handleDeleteDoc} />;
             case 'training': return <TrainingView trainings={trainings} onOpenTrainingModal={handleOpenTrainingModal} onSaveTraining={handleSaveTraining} ai={ai} onAddNotification={handleAddNotification} />;
             case 'contacts': return <ContactsView contacts={contacts} projects={projects} proposals={proposals} emails={emails} onOpenContactModal={handleOpenContactModal} ai={ai} onAddNotification={handleAddNotification} />;
             case 'reports': return <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />;
@@ -2576,6 +2599,15 @@ const App = () => {
                 initialData={emailComposeData}
                 ai={ai}
                 onAddNotification={handleAddNotification}
+            />
+
+            <DocEditorModal
+                isOpen={isDocEditorModalOpen}
+                onClose={() => setDocEditorModalOpen(false)}
+                doc={docToEdit}
+                onSave={handleSaveDoc}
+                onDelete={handleDeleteDoc}
+                ai={ai}
             />
 
              {isImageModalOpen && (
@@ -3439,43 +3471,90 @@ const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
     );
 };
 
-const DocsView = ({ docs, onImageClick, onNoteClick, onAddNote }) => {
+const DocsView = ({ docs, onImageClick, onOpenEditor, onDeleteDoc }) => {
     const [filterType, setFilterType] = useState<'all' | DocType>('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [sortOrder, setSortOrder] = useState<'createdAt' | 'title'>('createdAt');
 
-    const filteredDocs = useMemo(() => {
-        return docs.filter(doc => {
+    const sortedAndFilteredDocs = useMemo(() => {
+        let filtered = docs.filter(doc => {
             const typeMatch = filterType === 'all' || doc.type === filterType;
-            const termMatch = searchTerm === '' || doc.title.toLowerCase().includes(searchTerm.toLowerCase()) || doc.content.toLowerCase().includes(searchTerm.toLowerCase());
+            const termMatch = searchTerm === '' || doc.title.toLowerCase().includes(searchTerm.toLowerCase()) || (doc.type === 'note' && doc.content.toLowerCase().includes(searchTerm.toLowerCase()));
             return typeMatch && termMatch;
-        }).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [docs, filterType, searchTerm]);
+        });
+        
+        return filtered.sort((a, b) => {
+            if (sortOrder === 'title') {
+                return a.title.localeCompare(b.title, 'hu-HU');
+            }
+            // Default to createdAt
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+    }, [docs, filterType, searchTerm, sortOrder]);
+    
+    const iconMap = { 'note': 'article', 'link': 'link', 'image': 'image' };
 
     const DocCard = ({ doc }) => {
         const handleClick = () => {
             if (doc.type === 'image') onImageClick(`data:image/jpeg;base64,${doc.content}`);
-            if (doc.type === 'note') onNoteClick(doc.id);
+            if (doc.type === 'note') onOpenEditor(doc);
+        };
+        const handleDeleteClick = (e) => {
+            e.stopPropagation();
+            if(window.confirm(`Biztosan törli a(z) "${doc.title}" dokumentumot?`)) {
+                onDeleteDoc(doc.id);
+            }
         };
 
         const CardContent = () => {
             switch (doc.type) {
                 case 'note': return <p>{doc.content.substring(0, 100)}...</p>;
-                case 'link': return <a href={doc.content} target="_blank" rel="noopener noreferrer" className="doc-link-content">{doc.content}</a>;
+                case 'link': return <a href={doc.content} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} className="doc-link-content">{doc.content}</a>;
                 case 'image': return <img src={`data:image/jpeg;base64,${doc.content}`} alt={doc.title} />;
                 default: return null;
             }
         };
 
-        const icon = { 'note': 'article', 'link': 'link', 'image': 'image' }[doc.type];
-
         return (
             <div className={`card doc-card doc-card-${doc.type}`} onClick={handleClick}>
+                <button className="doc-delete-button button-icon-only" onClick={handleDeleteClick} title="Törlés"><span className="material-symbols-outlined">delete</span></button>
                 <div className="doc-card-header">
-                    <div className="doc-card-icon"><span className="material-symbols-outlined">{icon}</span></div>
+                    <div className="doc-card-icon"><span className="material-symbols-outlined">{iconMap[doc.type]}</span></div>
                     <h4>{doc.title}</h4>
                 </div>
                 <div className="doc-card-content"><CardContent /></div>
                 <div className="doc-card-footer">{new Date(doc.createdAt).toLocaleDateString('hu-HU')}</div>
+            </div>
+        );
+    };
+
+    const DocListItem = ({ doc }) => {
+        const handleClick = () => {
+            if (doc.type === 'image') onImageClick(`data:image/jpeg;base64,${doc.content}`);
+            if (doc.type === 'note') onOpenEditor(doc);
+        };
+         const handleDeleteClick = (e) => {
+            e.stopPropagation();
+            if(window.confirm(`Biztosan törli a(z) "${doc.title}" dokumentumot?`)) {
+                onDeleteDoc(doc.id);
+            }
+        };
+
+        return (
+            <div className="doc-list-item card" onClick={handleClick}>
+                <span className="material-symbols-outlined doc-item-icon">{iconMap[doc.type]}</span>
+                <div className="doc-item-main">
+                    <span className="doc-item-title">{doc.title}</span>
+                    <span className="doc-item-snippet">
+                        {doc.type === 'note' && doc.content.substring(0, 120) + '...'}
+                        {doc.type === 'link' && <a href={doc.content} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>{doc.content}</a>}
+                    </span>
+                </div>
+                <span className="doc-item-date">{new Date(doc.createdAt).toLocaleDateString('hu-HU')}</span>
+                <div className="doc-item-actions">
+                    <button className="button button-icon-only" onClick={handleDeleteClick} title="Törlés"><span className="material-symbols-outlined">delete</span></button>
+                </div>
             </div>
         );
     };
@@ -3491,31 +3570,56 @@ const DocsView = ({ docs, onImageClick, onNoteClick, onAddNote }) => {
                             <button onClick={() => setFilterType('image')} className={`filter-tab ${filterType === 'image' ? 'active' : ''}`}>Képek</button>
                             <button onClick={() => setFilterType('link')} className={`filter-tab ${filterType === 'link' ? 'active' : ''}`}>Linkek</button>
                         </div>
+                         <div className="view-mode-switcher">
+                            <button onClick={() => setViewMode('grid')} className={`button button-icon-only ${viewMode === 'grid' ? 'active' : ''}`} aria-label="Rács nézet"><span className="material-symbols-outlined">grid_view</span></button>
+                            <button onClick={() => setViewMode('list')} className={`button button-icon-only ${viewMode === 'list' ? 'active' : ''}`} aria-label="Lista nézet"><span className="material-symbols-outlined">view_list</span></button>
+                        </div>
+                        <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)}>
+                            <option value="createdAt">Rendezés: Legújabb</option>
+                            <option value="title">Rendezés: Cím</option>
+                        </select>
                     </div>
                     <input type="search" placeholder="Keresés a dokumentumokban..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                    <button className="button button-primary" onClick={onAddNote}><span className="material-symbols-outlined">add</span>Új Jegyzet</button>
+                    <button className="button button-primary" onClick={() => onOpenEditor(null)}><span className="material-symbols-outlined">add</span>Új Jegyzet</button>
                 </div>
-                <div className="docs-grid">
-                    {filteredDocs.map(doc => (
-                        doc.type === 'link' ? 
-                        <a key={doc.id} href={doc.content} target="_blank" rel="noopener noreferrer" className="doc-card-link"><DocCard doc={doc} /></a> :
-                        <DocCard key={doc.id} doc={doc} />
-                    ))}
-                </div>
+
+                {viewMode === 'grid' ? (
+                    <div className="docs-grid">
+                        {sortedAndFilteredDocs.map(doc => <DocCard key={doc.id} doc={doc} />)}
+                    </div>
+                ) : (
+                    <div className="docs-list">
+                        {sortedAndFilteredDocs.map(doc => <DocListItem key={doc.id} doc={doc} />)}
+                    </div>
+                )}
             </div>
         </View>
     );
 };
 
-const DocEditorView = ({ doc, onSave, onBack, ai }) => {
-    const [title, setTitle] = useState(doc.title);
-    const [content, setContent] = useState(doc.content);
+const DocEditorModal = ({ isOpen, onClose, doc, onSave, onDelete, ai }) => {
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
     const editorRef = useRef(null);
     const [aiResult, setAiResult] = useState('');
     const [isAiLoading, setIsAiLoading] = useState(false);
 
+    useEffect(() => {
+        if (isOpen && doc) {
+            setTitle(doc.title);
+            setContent(doc.content);
+            setAiResult('');
+        }
+    }, [isOpen, doc]);
+
     const handleSave = () => {
         onSave(doc.id, title, content);
+    };
+
+    const handleDelete = () => {
+        if (window.confirm(`Biztosan törli a(z) "${title}" jegyzetet?`)) {
+            onDelete(doc.id);
+        }
     };
     
     const handleEditorDidMount = (editor, monaco) => {
@@ -3548,59 +3652,66 @@ const DocEditorView = ({ doc, onSave, onBack, ai }) => {
             setIsAiLoading(false);
         }
     };
+    
+    if (!isOpen || !doc) return null;
 
     return (
-        <div className="doc-editor-view">
-            <div className="doc-editor-header">
-                <button className="button button-secondary" onClick={() => { handleSave(); onBack(); }}>
-                    <span className="material-symbols-outlined">arrow_back</span> Vissza
-                </button>
-                <input
-                    type="text"
-                    className="doc-editor-title-input"
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    onBlur={handleSave}
-                />
-            </div>
-            <div className="doc-editor-body">
-                <div className="editor-pane card">
-                    <Editor
-                        height="100%"
-                        language="markdown"
-                        theme="vs-dark"
-                        value={content}
-                        onChange={(value) => setContent(value || '')}
-                        onMount={handleEditorDidMount}
-                        options={{ minimap: { enabled: false }, wordWrap: 'on', automaticLayout: true, scrollBeyondLastLine: false }}
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card doc-editor-modal" onClick={e => e.stopPropagation()}>
+                <div className="doc-editor-header">
+                    <input
+                        type="text"
+                        className="doc-editor-title-input"
+                        value={title}
+                        onChange={e => setTitle(e.target.value)}
                     />
+                     <button onClick={onClose} className="button-icon-close">&times;</button>
                 </div>
-                <aside className="ai-assistant-panel card">
-                    <h4><span className="material-symbols-outlined">psychology</span>AI Asszisztens</h4>
-                    <div className="ai-assistant-actions">
-                         <button className="button button-secondary" onClick={() => handleAiAction('summarize')} disabled={isAiLoading}>
-                            <span className="material-symbols-outlined">compress</span>Összefoglalás
-                        </button>
-                        <button className="button button-secondary" onClick={() => handleAiAction('expand')} disabled={isAiLoading}>
-                            <span className="material-symbols-outlined">expand_content</span>Bővítés
-                        </button>
-                        <button className="button button-secondary" onClick={() => handleAiAction('fix')} disabled={isAiLoading}>
-                            <span className="material-symbols-outlined">spellcheck</span>Nyelvhelyesség javítása
-                        </button>
+                <div className="doc-editor-modal-body">
+                    <div className="editor-pane">
+                        <Editor
+                            height="100%"
+                            language="markdown"
+                            theme="vs-dark"
+                            value={content}
+                            onChange={(value) => setContent(value || '')}
+                            onMount={handleEditorDidMount}
+                            options={{ minimap: { enabled: false }, wordWrap: 'on', automaticLayout: true, scrollBeyondLastLine: false }}
+                        />
                     </div>
-                    {(isAiLoading || aiResult) && (
-                         <div className="ai-assistant-result">
-                            {isAiLoading 
-                                ? <div className="widget-placeholder" style={{padding: 0, background: 'transparent'}}><span className="material-symbols-outlined progress_activity">progress_activity</span><p>Gondolkodom...</p></div>
-                                : <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiResult}</ReactMarkdown>
-                            }
+                    <aside className="ai-assistant-panel card">
+                        <h4><span className="material-symbols-outlined">psychology</span>AI Asszisztens</h4>
+                        <div className="ai-assistant-actions">
+                            <button className="button button-secondary" onClick={() => handleAiAction('summarize')} disabled={isAiLoading}>
+                                <span className="material-symbols-outlined">compress</span>Összefoglalás
+                            </button>
+                            <button className="button button-secondary" onClick={() => handleAiAction('expand')} disabled={isAiLoading}>
+                                <span className="material-symbols-outlined">expand_content</span>Bővítés
+                            </button>
+                            <button className="button button-secondary" onClick={() => handleAiAction('fix')} disabled={isAiLoading}>
+                                <span className="material-symbols-outlined">spellcheck</span>Javítás
+                            </button>
                         </div>
-                    )}
-                </aside>
+                        {(isAiLoading || aiResult) && (
+                            <div className="ai-assistant-result">
+                                {isAiLoading 
+                                    ? <div className="widget-placeholder" style={{padding: 0, background: 'transparent'}}><span className="material-symbols-outlined progress_activity">progress_activity</span><p>Gondolkodom...</p></div>
+                                    : <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiResult}</ReactMarkdown>
+                                }
+                            </div>
+                        )}
+                    </aside>
+                </div>
+                 <div className="modal-actions">
+                    <button type="button" className="button button-secondary" style={{color: 'var(--color-destructive)', borderColor: 'var(--color-destructive)', marginRight: 'auto'}} onClick={handleDelete}>Törlés</button>
+                    <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
+                    <button type="button" className="button button-primary" onClick={handleSave}>Mentés és Bezárás</button>
+                </div>
             </div>
         </div>
     );
 };
+
 
 const TrainingModal = ({ isOpen, onClose, onSave, training }) => {
     const [title, setTitle] = useState('');
@@ -3862,6 +3973,16 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
         }
         return history;
     }, [transactions]);
+
+    const generateFinancialReport = async () => {
+        setIsFinancialReportLoading(true); setFinancialReport('');
+        const financialData = financialHistory.map(m => `${m.label}: Bevétel ${m.income}, Kiadás ${m.expense}`).join('; ');
+        const prompt = `Te egy pénzügyi elemző vagy. Elemezd a felhasználó utolsó néhány havi pénzügyi adatait. Írj egy rövid, 1-2 bekezdéses elemzést a trendekről (pl. növekvő kiadások, stabil bevétel). Adj 1-2 konkrét, megvalósítható tanácsot a pénzügyi helyzet javítására. A válaszodat magyarul add meg.\n\nHavi adatok:\n${financialData}`;
+        try {
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            setFinancialReport(response.text);
+        } catch (err) { console.error(err); setFinancialReport('Hiba történt a riport generálása közben.'); } finally { setIsFinancialReportLoading(false); }
+    };
     
     // --- Project Report Logic ---
     const projectSummary = useMemo(() => {
@@ -3953,4 +4074,74 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
                             </div>
                         </div>
                         <div className="chart-legend horizontal">
-                            <div className="legend-item"><div className="legend-color-box" style={{backgroundColor: 'var(--color-accent)'}}></div><span>Bevétel</span>
+                            <div className="legend-item"><div className="legend-color-box" style={{backgroundColor: 'var(--color-accent)'}}></div><span>Bevétel</span></div>
+                            <div className="legend-item"><div className="legend-color-box" style={{backgroundColor: 'var(--color-destructive)'}}></div><span>Kiadás</span></div>
+                        </div>
+                        <button onClick={generateFinancialReport} className="button button-secondary" disabled={isFinancialReportLoading}>
+                            {isFinancialReportLoading ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">psychology</span>} AI Elemzés
+                        </button>
+                        {financialReport && <div className="ai-summary-content report-ai-summary"><ReactMarkdown remarkPlugins={[remarkGfm]}>{financialReport}</ReactMarkdown></div>}
+                    </div>
+                </div>
+                
+                {/* Project Report Card */}
+                <div className="card report-card report-card-projects">
+                    <div className="report-header">
+                        <h3>Projekt Haladás</h3>
+                    </div>
+                    <div className="report-content">
+                        <div className="report-metrics">
+                            <div className="report-metric"><span>Aktív projektek</span><strong>{projectSummary.activeProjects.length}</strong></div>
+                            <div className="report-metric"><span>Átlagos készültség</span><strong>{Math.round(projectSummary.overallProgress)}%</strong></div>
+                        </div>
+                        <div className="project-progress-list">
+                            {projectSummary.activeProjects.slice(0, 4).map(p => (
+                                <div key={p.id} className="progress-item">
+                                    <span>{p.title}</span>
+                                    <div className="progress-bar-container">
+                                        <div className="progress-bar-fill" style={{ width: `${p.progress}%` }}></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={generateProjectReport} className="button button-secondary" disabled={isProjectReportLoading}>
+                            {isProjectReportLoading ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">psychology</span>} AI Elemzés
+                        </button>
+                        {projectReport && <div className="ai-summary-content report-ai-summary"><ReactMarkdown remarkPlugins={[remarkGfm]}>{projectReport}</ReactMarkdown></div>}
+                    </div>
+                </div>
+
+                {/* Training Report Card */}
+                <div className="card report-card report-card-training">
+                    <div className="report-header">
+                        <h3>Szakmai Fejlődés</h3>
+                    </div>
+                    <div className="report-content">
+                         <div className="report-metrics">
+                            <div className="report-metric"><span>Folyamatban lévő</span><strong>{trainingSummary.inProgress.length}</strong></div>
+                            <div className="report-metric"><span>Befejezett</span><strong>{trainingSummary.completedCount}</strong></div>
+                            <div className="report-metric"><span>Átlagos haladás</span><strong>{Math.round(trainingSummary.avgProgress)}%</strong></div>
+                        </div>
+                        <div className="training-report-list">
+                            {trainingSummary.inProgress.slice(0,3).map(t => (
+                                <div key={t.id} className="progress-item">
+                                    <span>{t.title}</span>
+                                    <div className="progress-bar-container">
+                                        <div className="progress-bar-fill" style={{ width: `${t.progress}%` }}></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </View>
+    );
+};
+
+
+ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+    <React.StrictMode>
+        <App />
+    </React.StrictMode>
+);
