@@ -184,7 +184,7 @@ const mockDocs: DocItem[] = [
     { id: 'doc-3', type: 'note', title: 'P-Day-Light V7 ötletek', content: '1. Gamification elemek bevezetése.\n2. Témák közötti váltás (világos/sötét).\n3. Részletesebb riportok a pénzügyek modulba.', createdAt: new Date('2024-07-28T14:00:00Z').toISOString() },
 ];
 
-const mockEmails: EmailMessage[] = [
+const mockInitialEmails: EmailMessage[] = [
     { id: 'email-1', sender: 'support@figma.com', recipient: 'felhasznalo@domain.com', subject: 'Figma Project Update: New Comments on "P-Day Light UI"', body: 'Hello,\n\nThere are new comments on your project that need your attention. Please review them and provide feedback to the team by Friday.\n\nThanks,\nThe Figma Team', timestamp: '2024-07-30T10:00:00Z', read: false, important: true, category: 'inbox' },
     { id: 'email-2', sender: 'NAV Értesítő', recipient: 'felhasznalo@domain.com', subject: 'Fontos: Változás a TAO bevallásban', body: 'Tisztelt Ügyfelünk! Tájékoztatjuk, hogy a társasági adó bevallásával kapcsolatos szabályozás megváltozott. Kérjük, olvassa el a frissített tájékoztatót a weboldalunkon. A bevallás határideje augusztus 10. Üdvözlettel, NAV', timestamp: '2024-07-29T14:30:00Z', read: true, important: true, category: 'inbox' },
     { id: 'email-3', sender: 'hello@example.com', recipient: 'felhasznalo@domain.com', subject: 'Re: Meeting Follow-up', body: 'Just wanted to follow up on our meeting yesterday. The action items are in the shared document.', timestamp: '2024-07-30T11:00:00Z', read: false, important: false, category: 'inbox' },
@@ -316,7 +316,7 @@ const NotificationContainer = ({ notifications, onDismiss }) => (
 );
 
 // --- DASHBOARD WIDGETS ---
-const QuickActions = ({ onOpenTaskModal, onOpenEventModal }) => ( <div className="quick-actions"> <button className="button button-primary" onClick={() => onOpenTaskModal()}><span className="material-symbols-outlined">add_task</span> Új feladat</button> <button className="button button-secondary" onClick={() => onOpenEventModal()}><span className="material-symbols-outlined">edit_calendar</span> Új esemény</button> <button className="button button-secondary"><span className="material-symbols-outlined">post_add</span> Új dokumentum</button> <button className="button button-secondary"><span className="material-symbols-outlined">edit</span> Email írása</button> </div>);
+const QuickActions = ({ onOpenTaskModal, onOpenEventModal, onOpenEmailComposeModal }) => ( <div className="quick-actions"> <button className="button button-primary" onClick={() => onOpenTaskModal()}><span className="material-symbols-outlined">add_task</span> Új feladat</button> <button className="button button-secondary" onClick={() => onOpenEventModal()}><span className="material-symbols-outlined">edit_calendar</span> Új esemény</button> <button className="button button-secondary"><span className="material-symbols-outlined">post_add</span> Új dokumentum</button> <button className="button button-secondary" onClick={() => onOpenEmailComposeModal()}><span className="material-symbols-outlined">edit</span> Email írása</button> </div>);
 
 const DailyBriefingWidget = ({ tasks, events, emails, proposals, ai }: { tasks: TaskItem[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI }) => {
     const [summary, setSummary] = useState('');
@@ -364,10 +364,10 @@ const View = ({ title, subtitle, children, actions }: { title: any; subtitle: an
     </div>
 );
 
-const DashboardView = ({ tasks, events, emails, proposals, ai, onOpenTaskModal, onOpenEventModal }: { tasks: TaskItem[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI, onOpenTaskModal: () => void, onOpenEventModal: () => void }) => (
+const DashboardView = ({ tasks, events, emails, proposals, ai, onOpenTaskModal, onOpenEventModal, onOpenEmailComposeModal }: { tasks: TaskItem[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI, onOpenTaskModal: () => void, onOpenEventModal: () => void, onOpenEmailComposeModal: () => void }) => (
     <View title="Dashboard" subtitle="Üdvözöljük a P-Day Light alkalmazásban!">
         <div className="dashboard-layout">
-            <QuickActions onOpenTaskModal={onOpenTaskModal} onOpenEventModal={onOpenEventModal}/>
+            <QuickActions onOpenTaskModal={onOpenTaskModal} onOpenEventModal={onOpenEventModal} onOpenEmailComposeModal={onOpenEmailComposeModal}/>
             <div className="dashboard-grid">
                 <DailyBriefingWidget tasks={tasks} events={events} emails={emails} proposals={proposals} ai={ai} />
                 <UpcomingTasksWidget tasks={tasks} />
@@ -1253,7 +1253,7 @@ const TaskKanbanBoard = ({ tasks, setTasks, onOpenTaskModal, onAddNotification }
 
 
 // --- TASK MANAGEMENT VIEW ---
-const TasksView = ({ tasks, setTasks, onOpenTaskModal, onAddNotification }: { tasks: TaskItem[], setTasks: React.Dispatch<React.SetStateAction<TaskItem[]>>, onOpenTaskModal: (task?: TaskItem) => void, onAddNotification: (notification: Omit<Notification, 'id'>) => void }) => {
+const TasksView = ({ tasks, setTasks, onOpenTaskModal, onAddNotification, emails, projects, proposals, trainings }: { tasks: TaskItem[], emails: EmailMessage[], projects: Project[], proposals: Proposal[], trainings: TrainingItem[], setTasks: React.Dispatch<React.SetStateAction<TaskItem[]>>, onOpenTaskModal: (task?: TaskItem) => void, onAddNotification: (notification: Omit<Notification, 'id'>) => void }) => {
     const [filterStatus, setFilterStatus] = useState<TaskStatus | 'all'>('all'); 
     const [sortOrder, setSortOrder] = useState<'dueDate' | 'priority' | 'createdAt'>('createdAt'); 
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -1342,10 +1342,10 @@ const TasksView = ({ tasks, setTasks, onOpenTaskModal, onAddNotification }: { ta
                                     <p className="task-description">{task.description || 'Nincs leírás megadva.'}</p> 
                                     <div className="task-meta"> 
                                         <span><strong>Határidő:</strong> {formatDate(task.dueDate)}</span> 
-                                        {task.projectId && <span className="task-project"><strong>Projekt:</strong> {mockProjects.find(p => p.id === task.projectId)?.title}</span>} 
-                                        {task.proposalId && <span className="task-proposal"><strong>Pályázat:</strong> {mockProposals.find(p => p.id === task.proposalId)?.title}</span>} 
-                                        {task.trainingId && <span className="task-training"><strong>Képzés:</strong> {mockTrainings.find(t => t.id === task.trainingId)?.title}</span>} 
-                                        {task.relatedTo && <span className="task-email"><strong>Kapcsolódó email:</strong> {mockEmails.find(e => e.id === task.relatedTo)?.subject}</span>} 
+                                        {task.projectId && <span className="task-project"><strong>Projekt:</strong> {projects.find(p => p.id === task.projectId)?.title}</span>} 
+                                        {task.proposalId && <span className="task-proposal"><strong>Pályázat:</strong> {proposals.find(p => p.id === task.proposalId)?.title}</span>} 
+                                        {task.trainingId && <span className="task-training"><strong>Képzés:</strong> {trainings.find(t => t.id === task.trainingId)?.title}</span>} 
+                                        {task.relatedTo && <span className="task-email"><strong>Kapcsolódó email:</strong> {emails.find(e => e.id === task.relatedTo)?.subject}</span>} 
                                     </div> 
                                     {task.subTasks && task.subTasks.length > 0 && ( 
                                         <div className="subtask-list"> 
@@ -1755,6 +1755,7 @@ const App = () => {
     const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
     const [trainings, setTrainings] = useState<TrainingItem[]>(mockTrainings);
     const [contacts, setContacts] = useState<Contact[]>(mockContacts);
+    const [emails, setEmails] = useState<EmailMessage[]>(mockInitialEmails);
     const [plannerEvents, setPlannerEvents] = useState<PlannerEvent[]>(() => generateInitialPlannerEvents(mockTasks, mockProposals));
 
     const [activeView, setActiveView] = useState<{ id: string; params?: any }>({ id: 'dashboard' });
@@ -1764,7 +1765,6 @@ const App = () => {
     const [isTaskModalOpen, setTaskModalOpen] = useState(false);
     const [taskToEdit, setTaskToEdit] = useState<TaskItem | null>(null);
     const [taskDefaultValues, setTaskDefaultValues] = useState({});
-
 
     const [isEventModalOpen, setEventModalOpen] = useState(false);
     const [eventInitialDate, setEventInitialDate] = useState<string | undefined>(undefined);
@@ -1783,6 +1783,9 @@ const App = () => {
 
     const [isContactModalOpen, setContactModalOpen] = useState(false);
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
+
+    const [isEmailComposeModalOpen, setEmailComposeModalOpen] = useState(false);
+    const [emailComposeData, setEmailComposeData] = useState(null);
     
     const [selectedProjectForDetail, setSelectedProjectForDetail] = useState<Project | null>(null);
     const [selectedProposalForDetail, setSelectedProposalForDetail] = useState<Proposal | null>(null);
@@ -1864,6 +1867,7 @@ const App = () => {
                 createdAt: new Date().toISOString(),
                 projectId: taskData.projectId,
                 proposalId: taskData.proposalId,
+                relatedTo: taskData.relatedTo,
             };
             setTasks(prev => [newTask, ...prev]);
             handleAddNotification({ message: 'Feladat sikeresen létrehozva!', type: 'success' });
@@ -1880,7 +1884,6 @@ const App = () => {
         setTasks(prev => [...newTasks, ...prev]);
         handleAddNotification({ message: `${newTasks.length} új feladat hozzáadva!`, type: 'success' });
     };
-
     
     const handleAddEvent = (eventData: Omit<PlannerEvent, 'id'>) => {
         const newEvent: PlannerEvent = {
@@ -2025,19 +2028,40 @@ const App = () => {
         ));
     };
 
+    const handleOpenEmailComposeModal = (data = null) => {
+        setEmailComposeData(data);
+        setEmailComposeModalOpen(true);
+    };
+
+    const handleSendEmail = (emailData) => {
+        const newEmail: EmailMessage = {
+            id: `email-${Date.now()}`,
+            sender: 'felhasznalo@domain.com',
+            recipient: emailData.recipient,
+            subject: emailData.subject,
+            body: emailData.body,
+            timestamp: new Date().toISOString(),
+            read: true,
+            important: false,
+            category: 'sent',
+        };
+        setEmails(prev => [newEmail, ...prev]);
+        handleAddNotification({ message: 'Email sikeresen elküldve!', type: 'success' });
+    };
+
     const handleNavigate = (viewId, params = {}) => {
         setActiveView({ id: viewId, params });
         if (size.width <= 1024) { setMobileNavOpen(false); }
     };
     
-    const allData = { tasks, projects, docs, proposals, emails: mockEmails, trainings, transactions, contacts };
+    const allData = { tasks, projects, docs, proposals, emails: emails, trainings, transactions, contacts };
 
     const renderView = () => {
         switch (activeView.id) {
-            case 'dashboard': return <DashboardView tasks={tasks} events={plannerEvents} emails={mockEmails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal}/>;
-            case 'tasks': return <TasksView tasks={tasks} setTasks={setTasks} onOpenTaskModal={handleOpenTaskModal} onAddNotification={handleAddNotification} />;
+            case 'dashboard': return <DashboardView tasks={tasks} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
+            case 'tasks': return <TasksView tasks={tasks} emails={emails} projects={projects} proposals={proposals} trainings={trainings} setTasks={setTasks} onOpenTaskModal={handleOpenTaskModal} onAddNotification={handleAddNotification} />;
             case 'planner': return <PlannerView events={plannerEvents} onOpenEventModal={handleOpenEventModal} onOpenDayModal={handleOpenDayModal} />;
-            case 'email': return <EmailView ai={ai} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />;
+            case 'email': return <EmailView emails={emails} ai={ai} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} onOpenEmailCompose={handleOpenEmailComposeModal} />;
             case 'projects': return <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} onProjectClick={handleOpenProjectDetail} />;
             case 'proposals': return <ProposalsView proposals={proposals} setProposals={setProposals} tasks={tasks} onOpenProposalModal={() => setProposalModalOpen(true)} onProposalClick={handleOpenProposalDetail} onAddNotification={handleAddNotification} />;
             case 'finances': return <FinancesView transactions={transactions} ai={ai} onOpenTransactionModal={() => setTransactionModalOpen(true)} />;
@@ -2047,11 +2071,11 @@ const App = () => {
                 return docToEdit ? <DocEditorView doc={docToEdit} onSave={handleUpdateDoc} onBack={() => handleNavigate('docs')} ai={ai} /> : <View title="Hiba" subtitle="A dokumentum nem található." />;
             }
             case 'training': return <TrainingView trainings={trainings} onOpenTrainingModal={handleOpenTrainingModal} onSaveTraining={handleSaveTraining} ai={ai} onAddNotification={handleAddNotification} />;
-            case 'contacts': return <ContactsView contacts={contacts} projects={projects} proposals={proposals} emails={mockEmails} onOpenContactModal={handleOpenContactModal} ai={ai} onAddNotification={handleAddNotification} />;
+            case 'contacts': return <ContactsView contacts={contacts} projects={projects} proposals={proposals} emails={emails} onOpenContactModal={handleOpenContactModal} ai={ai} onAddNotification={handleAddNotification} />;
             case 'reports': return <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />;
             case 'ai-chat': return <AiChatView ai={ai} tasks={tasks} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />;
             case 'ai-creative': return <AiCreativeView ai={ai} onSaveToDocs={handleSaveImageToDocs} onAddNotification={handleAddNotification} />;
-            default: return <DashboardView tasks={tasks} events={plannerEvents} emails={mockEmails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal}/>;
+            default: return <DashboardView tasks={tasks} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
         }
     };
 
@@ -2170,6 +2194,15 @@ const App = () => {
                 onSave={handleSaveContact}
                 contact={contactToEdit}
             />
+            
+            <EmailComposeModal
+                isOpen={isEmailComposeModalOpen}
+                onClose={() => setEmailComposeModalOpen(false)}
+                onSend={handleSendEmail}
+                initialData={emailComposeData}
+                ai={ai}
+                onAddNotification={handleAddNotification}
+            />
 
              {isImageModalOpen && (
                 <div className="image-modal-overlay" onClick={() => setImageModalOpen(false)}>
@@ -2244,8 +2277,7 @@ const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMo
     );
 };
 
-const EmailView = ({ ai, onAddTask, onAddNotification }) => {
-    const [emails] = useState(mockEmails);
+const EmailView = ({ emails, ai, onAddTask, onAddNotification, onOpenEmailCompose }) => {
     const [selectedCategory, setSelectedCategory] = useState<'inbox' | 'sent'>('inbox');
     const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -2303,7 +2335,7 @@ const EmailView = ({ ai, onAddTask, onAddNotification }) => {
         <View title="Email" subtitle="Bejövő és kimenő levelek kezelése.">
             <div className="email-view-layout card">
                 <aside className="email-sidebar">
-                    <button className="button button-primary" style={{ width: '100%' }}>Új Email</button>
+                    <button className="button button-primary" style={{ width: '100%' }} onClick={() => onOpenEmailCompose()}>Új Email</button>
                     <ul className="email-category-list" style={{ marginTop: 'var(--spacing-lg)' }}>
                         <li onClick={() => setSelectedCategory('inbox')} className={`email-category-item ${selectedCategory === 'inbox' ? 'active' : ''}`}><span className="material-symbols-outlined">inbox</span>Bejövő</li>
                         <li onClick={() => setSelectedCategory('sent')} className={`email-category-item ${selectedCategory === 'sent' ? 'active' : ''}`}><span className="material-symbols-outlined">send</span>Elküldött</li>
@@ -2331,7 +2363,7 @@ const EmailView = ({ ai, onAddTask, onAddNotification }) => {
                                 <p><strong>Feladó:</strong> {selectedEmail.sender}</p>
                                 <p><strong>Címzett:</strong> {selectedEmail.recipient}</p>
                                 <div className="email-actions">
-                                    <button className="button button-secondary"><span className="material-symbols-outlined">reply</span>Válasz</button>
+                                    <button className="button button-secondary" onClick={() => onOpenEmailCompose({ mode: 'reply', originalEmail: selectedEmail })}><span className="material-symbols-outlined">reply</span>Válasz</button>
                                     <button className="button button-secondary"><span className="material-symbols-outlined">delete</span>Törlés</button>
                                     <button className="button button-secondary" onClick={() => handleCreateTaskFromEmail(selectedEmail)} disabled={isLoading}>
                                         <span className={`material-symbols-outlined ${isLoading ? 'progress_activity' : ''}`}>{isLoading ? 'progress_activity' : 'add_task'}</span>
@@ -3289,23 +3321,22 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
 
     const { weekStart, weekEnd, weekLabel } = useMemo(() => {
         const today = new Date();
-        const currentDay = today.getDay(); // Sunday is 0, Monday is 1, etc.
-        // Calculate days to subtract to get to the previous Monday
-        const daysSinceMonday = (currentDay + 6) % 7;
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const date = today.getDate();
+        const dayOfWeek = today.getDay(); // 0 for Sunday
         
-        // Get the Monday of the current week as a starting point
-        const mondayOfThisWeek = new Date(today);
-        mondayOfThisWeek.setDate(mondayOfThisWeek.getDate() - daysSinceMonday);
+        // Calculate the date of the Monday of the current week.
+        const mondayDate = date - ((dayOfWeek + 6) % 7);
         
-        // Apply the offset to get the target week's Monday
-        const start = new Date(mondayOfThisWeek);
-        start.setDate(start.getDate() + (weekOffset * 7));
-        start.setHours(0, 0, 0, 0);
+        // Calculate the date of the Monday of the target week (with offset).
+        const targetMondayDate = mondayDate + (weekOffset * 7);
+        
+        // Create the start date object.
+        const start = new Date(year, month, targetMondayDate, 0, 0, 0, 0);
 
-        // Calculate the end of the week (Sunday)
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
-        end.setHours(23, 59, 59, 999);
+        // Create the end date object.
+        const end = new Date(year, month, targetMondayDate + 6, 23, 59, 59, 999);
 
         const label = `${start.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })}`;
         return { weekStart: start, weekEnd: end, weekLabel: label };
@@ -3790,3 +3821,120 @@ const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNoti
         </div>
     );
 };
+
+const EmailComposeModal = ({ isOpen, onClose, onSend, initialData, ai, onAddNotification }) => {
+    const [recipient, setRecipient] = useState('');
+    const [subject, setSubject] = useState('');
+    const [body, setBody] = useState('');
+    
+    const [aiPrompt, setAiPrompt] = useState('');
+    const [generatedDraft, setGeneratedDraft] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            if (initialData?.mode === 'reply' && initialData.originalEmail) {
+                const original = initialData.originalEmail;
+                setRecipient(original.sender);
+                setSubject(original.subject.startsWith('Re: ') ? original.subject : `Re: ${original.subject}`);
+                setBody(`\n\n---\nOn ${new Date(original.timestamp).toLocaleString()}, ${original.sender} wrote:\n> ${original.body.replace(/\n/g, '\n> ')}`);
+            } else {
+                setRecipient('');
+                setSubject('');
+                setBody('');
+            }
+            setAiPrompt('');
+            setGeneratedDraft('');
+        }
+    }, [isOpen, initialData]);
+
+    if (!isOpen) return null;
+
+    const handleGenerateDraft = async () => {
+        if (!aiPrompt.trim()) return;
+        setIsGenerating(true);
+        setGeneratedDraft('');
+        const prompt = `Te egy profi üzleti asszisztens vagy. Írj egy udvarias, professzionális emailt a következő utasítások alapján. A válaszodban csak magát az email szövegét add vissza, mindenféle bevezető vagy magyarázat nélkül.\n\nUtasítás: "${aiPrompt}"`;
+        try {
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            setGeneratedDraft(response.text);
+        } catch (err) {
+            console.error("AI Email Draft Error:", err);
+            onAddNotification({ message: 'Hiba a piszkozat generálása közben.', type: 'error' });
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+    
+    const handleUseDraft = () => {
+        setBody(generatedDraft);
+        setGeneratedDraft('');
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!recipient.trim() || !subject.trim()) return;
+        onSend({ recipient, subject, body });
+        onClose();
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card email-compose-modal" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>Új Email</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <div className="email-compose-body">
+                    <form onSubmit={handleSubmit} className="email-compose-form">
+                        <div className="form-group">
+                            <label htmlFor="email-recipient">Címzett</label>
+                            <input id="email-recipient" type="email" value={recipient} onChange={e => setRecipient(e.target.value)} required />
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="email-subject">Tárgy</label>
+                            <input id="email-subject" type="text" value={subject} onChange={e => setSubject(e.target.value)} required />
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="email-body">Üzenet</label>
+                            <textarea id="email-body" value={body} onChange={e => setBody(e.target.value)} rows={10}></textarea>
+                        </div>
+                        <div className="modal-actions">
+                            <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
+                            <button type="submit" className="button button-primary">Küldés</button>
+                        </div>
+                    </form>
+                    <aside className="ai-email-assistant card">
+                        <h4><span className="material-symbols-outlined">psychology</span>AI Email Asszisztens</h4>
+                        <div className="ai-assistant-section">
+                            <label htmlFor="ai-email-prompt">Piszkozat generálása</label>
+                            <textarea
+                                id="ai-email-prompt"
+                                value={aiPrompt}
+                                onChange={e => setAiPrompt(e.target.value)}
+                                placeholder="Írja le röviden, miről szóljon az email..."
+                                rows={3}
+                                disabled={isGenerating}
+                            />
+                            <button className="button button-secondary" onClick={handleGenerateDraft} disabled={isGenerating || !aiPrompt.trim()}>
+                                {isGenerating ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">edit_note</span>}
+                                Piszkozat
+                            </button>
+                            {generatedDraft && (
+                                <div className="ai-result-box">
+                                    <pre>{generatedDraft}</pre>
+                                    <button className="button button-primary" onClick={handleUseDraft} style={{width: '100%', marginTop: 'var(--spacing-md)'}}>
+                                        Piszkozat használata
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
