@@ -42,7 +42,7 @@ type PlannerEventType = 'personal' | 'work' | 'email_task' | 'meeting' | 'deadli
 interface PlannerEvent {
     id: string;
     title: string;
-    date: string;
+    date: string; // YYYY-MM-DD
     time?: string;
     type: PlannerEventType;
     description?: string;
@@ -226,36 +226,40 @@ const mockTasks: TaskItem[] = [
     { id: 'task-11', title: 'Generikusok megértése', status: 'Folyamatban', priority: 'Közepes', dueDate: '2024-08-15', category: 'Tanulás', createdAt: '2024-08-06T11:00:00Z', trainingId: 'train-1' },
 ];
 
-const mockPlannerEvents: PlannerEvent[] = mockTasks
-    .filter(task => task.dueDate)
-    .map(task => ({
-        id: `event-from-${task.id}`,
-        title: task.title,
-        date: task.dueDate!,
-        type: ((): PlannerEventType => {
-            switch(task.category) {
-                case 'Munka': case 'Projekt': return 'work';
-                case 'Pályázat': return 'declaration_deadline';
-                case 'Személyes': return 'personal';
-                default: return 'deadline';
-            }
-        })(),
-        source: task.id,
-    }));
-mockProposals.forEach(proposal => {
-    mockPlannerEvents.push({
+const generateInitialPlannerEvents = (tasks: TaskItem[], proposals: Proposal[]): PlannerEvent[] => {
+    const eventsFromTasks = tasks
+        .filter(task => task.dueDate)
+        .map(task => ({
+            id: `event-from-${task.id}`,
+            title: task.title,
+            date: task.dueDate!,
+            type: ((): PlannerEventType => {
+                switch (task.category) {
+                    case 'Munka': case 'Projekt': return 'work';
+                    case 'Pályázat': return 'declaration_deadline';
+                    case 'Személyes': return 'personal';
+                    default: return 'deadline';
+                }
+            })(),
+            source: task.id,
+        }));
+
+    const eventsFromProposals = proposals.map(proposal => ({
         id: `event-from-${proposal.id}`,
         title: `Pályázat: ${proposal.title}`,
         date: proposal.submissionDeadline,
-        type: 'proposal_deadline',
+        type: 'proposal_deadline' as PlannerEventType,
         source: proposal.id
-    });
-});
-mockPlannerEvents.push(
-    { id: 'event-1', title: 'Heti szinkron', date: '2024-08-05', time: '10:00', type: 'meeting', location: 'Google Meet' },
-    { id: 'event-2', title: 'Fogorvos', date: '2024-08-12', time: '14:30', type: 'personal' },
-    { id: 'event-3', title: 'P-Day Light V6 Tervezés', date: '2024-08-20', time: '09:00', type: 'work', description: 'Új funkciók specifikálása' },
-);
+    }));
+
+    const staticEvents: PlannerEvent[] = [
+        { id: 'event-1', title: 'Heti szinkron', date: '2024-08-05', time: '10:00', type: 'meeting', location: 'Google Meet' },
+        { id: 'event-2', title: 'Fogorvos', date: '2024-08-12', time: '14:30', type: 'personal' },
+        { id: 'event-3', title: 'P-Day Light V6 Tervezés', date: '2024-08-20', time: '09:00', type: 'work', description: 'Új funkciók specifikálása' },
+    ];
+    
+    return [...eventsFromTasks, ...eventsFromProposals, ...staticEvents];
+};
 
 const mockTransactions: Transaction[] = [
     { id: 'tran-1', title: 'Havi fizetés', amount: 550000, type: 'income', category: 'Fizetés', date: '2024-08-01' },
@@ -312,7 +316,7 @@ const NotificationContainer = ({ notifications, onDismiss }) => (
 );
 
 // --- DASHBOARD WIDGETS ---
-const QuickActions = ({ onOpenTaskModal }) => ( <div className="quick-actions"> <button className="button button-primary" onClick={() => onOpenTaskModal()}><span className="material-symbols-outlined">add_task</span> Új feladat</button> <button className="button button-secondary"><span className="material-symbols-outlined">edit_calendar</span> Új esemény</button> <button className="button button-secondary"><span className="material-symbols-outlined">post_add</span> Új dokumentum</button> <button className="button button-secondary"><span className="material-symbols-outlined">edit</span> Email írása</button> </div>);
+const QuickActions = ({ onOpenTaskModal, onOpenEventModal }) => ( <div className="quick-actions"> <button className="button button-primary" onClick={() => onOpenTaskModal()}><span className="material-symbols-outlined">add_task</span> Új feladat</button> <button className="button button-secondary" onClick={() => onOpenEventModal()}><span className="material-symbols-outlined">edit_calendar</span> Új esemény</button> <button className="button button-secondary"><span className="material-symbols-outlined">post_add</span> Új dokumentum</button> <button className="button button-secondary"><span className="material-symbols-outlined">edit</span> Email írása</button> </div>);
 
 const DailyBriefingWidget = ({ tasks, events, emails, proposals, ai }: { tasks: TaskItem[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI }) => {
     const [summary, setSummary] = useState('');
@@ -360,10 +364,10 @@ const View = ({ title, subtitle, children, actions }: { title: any; subtitle: an
     </div>
 );
 
-const DashboardView = ({ tasks, events, emails, proposals, ai, onOpenTaskModal }: { tasks: TaskItem[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI, onOpenTaskModal: () => void }) => (
+const DashboardView = ({ tasks, events, emails, proposals, ai, onOpenTaskModal, onOpenEventModal }: { tasks: TaskItem[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI, onOpenTaskModal: () => void, onOpenEventModal: () => void }) => (
     <View title="Dashboard" subtitle="Üdvözöljük a P-Day Light alkalmazásban!">
         <div className="dashboard-layout">
-            <QuickActions onOpenTaskModal={onOpenTaskModal}/>
+            <QuickActions onOpenTaskModal={onOpenTaskModal} onOpenEventModal={onOpenEventModal}/>
             <div className="dashboard-grid">
                 <DailyBriefingWidget tasks={tasks} events={events} emails={emails} proposals={proposals} ai={ai} />
                 <UpcomingTasksWidget tasks={tasks} />
@@ -374,11 +378,19 @@ const DashboardView = ({ tasks, events, emails, proposals, ai, onOpenTaskModal }
     </View>
 );
 // --- PLANNER / CALENDAR VIEW ---
-const PlannerView = () => {
+const PlannerView = ({ events, onOpenEventModal, onOpenDayModal }: { events: PlannerEvent[], onOpenEventModal: (date?: string) => void, onOpenDayModal: (date: string, events: PlannerEvent[]) => void }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const handlePrevMonth = () => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
     const handleNextMonth = () => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
     const handleGoToToday = () => setCurrentDate(new Date());
+
+    const eventsByDate = useMemo(() => {
+        return events.reduce((acc, event) => {
+            (acc[event.date] = acc[event.date] || []).push(event);
+            return acc;
+        }, {} as Record<string, PlannerEvent[]>);
+    }, [events]);
+
     const calendarDays = useMemo(() => {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
@@ -395,9 +407,66 @@ const PlannerView = () => {
         }
         return days;
     }, [currentDate]);
-    const weekDays = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V']; const today = new Date();
-    return ( <View title="Naptár" subtitle="Személyes és munkahelyi események áttekintése."> <div className="planner-view-container"> <div className="calendar-header card"> <div className="calendar-title">{currentDate.toLocaleDateString('hu-HU', { month: 'long', year: 'numeric' })}</div> <div className="calendar-controls"> <button onClick={handlePrevMonth} className="button button-icon-only" aria-label="Előző hónap"><span className="material-symbols-outlined">chevron_left</span></button> <button onClick={handleGoToToday} className="button button-secondary">Ma</button> <button onClick={handleNextMonth} className="button button-icon-only" aria-label="Következő hónap"><span className="material-symbols-outlined">chevron_right</span></button> </div> </div> <div className="calendar-body card"> <div className="calendar-day-names">{weekDays.map(day => <div key={day} className="calendar-day-name">{day}</div>)}</div> <div className="calendar-grid">{calendarDays.map((day, index) => { const dayString = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`; const eventsForDay = mockPlannerEvents.filter(event => event.date === dayString); const isToday = day.getFullYear() === today.getFullYear() && day.getMonth() === today.getMonth() && day.getDate() === today.getDate(); const isOtherMonth = day.getMonth() !== currentDate.getMonth(); return ( <div key={index} className={`day-cell ${isToday ? 'today' : ''} ${isOtherMonth ? 'other-month' : ''}`}> <div className="day-number">{day.getDate()}</div> <div className="events-list">{eventsForDay.map(event => ( <div key={event.id} className={`event-pill ${getEventTypeClass(event.type)}`} title={event.title}> {event.time && <span className="event-time">{event.time}</span>} <span className="event-title">{event.title}</span> </div> ))}</div> </div> ); })}</div> </div> </div> </View> );
+
+    const weekDays = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V']; 
+    const today = new Date();
+
+    const renderEventPill = (event: PlannerEvent) => (
+        <div key={event.id} className={`event-pill ${getEventTypeClass(event.type)}`} title={event.title}>
+            <div className="event-pill-dot"></div>
+            <span className="event-title">{event.title}</span>
+        </div>
+    );
+    
+    return (
+        <View 
+            title="Naptár" 
+            subtitle="Személyes és munkahelyi események áttekintése."
+            actions={
+                 <button className="button button-primary" onClick={() => onOpenEventModal()}>
+                    <span className="material-symbols-outlined">edit_calendar</span> Új esemény
+                </button>
+            }
+        >
+            <div className="planner-view-container">
+                <div className="calendar-header card">
+                    <div className="calendar-title">{currentDate.toLocaleDateString('hu-HU', { month: 'long', year: 'numeric' })}</div>
+                    <div className="calendar-controls">
+                        <button onClick={handlePrevMonth} className="button button-icon-only" aria-label="Előző hónap"><span className="material-symbols-outlined">chevron_left</span></button>
+                        <button onClick={handleGoToToday} className="button button-secondary">Ma</button>
+                        <button onClick={handleNextMonth} className="button button-icon-only" aria-label="Következő hónap"><span className="material-symbols-outlined">chevron_right</span></button>
+                    </div>
+                </div>
+                <div className="calendar-body card">
+                    <div className="calendar-day-names">{weekDays.map(day => <div key={day} className="calendar-day-name">{day}</div>)}</div>
+                    <div className="calendar-grid">{calendarDays.map((day, index) => {
+                        const dayString = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+                        const eventsForDay = eventsByDate[dayString] || [];
+                        const isToday = day.getFullYear() === today.getFullYear() && day.getMonth() === today.getMonth() && day.getDate() === today.getDate();
+                        const isOtherMonth = day.getMonth() !== currentDate.getMonth();
+                        const maxEventsToShow = 2;
+                        const hiddenEventsCount = eventsForDay.length > maxEventsToShow ? eventsForDay.length - maxEventsToShow : 0;
+
+                        return (
+                            <div key={index} className={`day-cell ${isToday ? 'today' : ''} ${isOtherMonth ? 'other-month' : ''}`} onClick={() => onOpenDayModal(dayString, eventsForDay)}>
+                                <div className="day-number">{day.getDate()}</div>
+                                <div className="events-list">
+                                    {eventsForDay.slice(0, maxEventsToShow).map(renderEventPill)}
+                                    {hiddenEventsCount > 0 && (
+                                        <div className="more-events-indicator">
+                                            +{hiddenEventsCount} további
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}</div>
+                </div>
+            </div>
+        </View>
+    );
 };
+
 
 // --- MODALS ---
 const TaskModal = ({ isOpen, onClose, onAddTask, initialData = null }) => {
@@ -411,6 +480,133 @@ const TaskModal = ({ isOpen, onClose, onAddTask, initialData = null }) => {
     if (!isOpen) return null;
     const handleSubmit = (e) => { e.preventDefault(); if (!title.trim()) return; onAddTask({ title: title.trim(), description: description.trim(), dueDate, priority, category: 'Személyes' }); onClose(); };
     return ( <div className="modal-overlay" onClick={() => onClose()}> <div className="modal-content card" onClick={e => e.stopPropagation()}> <div className="modal-header"> <h3>{initialData ? "Feladat Módosítása" : "Új Feladat Létrehozása"}</h3> <button onClick={() => onClose()} className="button-icon-close">&times;</button> </div> <form onSubmit={handleSubmit} className="modal-form"> <div className="form-group"><label htmlFor="task-title">Cím</label><input id="task-title" type="text" value={title} onChange={e => setTitle(e.target.value)} required /></div> <div className="form-group"><label htmlFor="task-description">Leírás</label><textarea id="task-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}></textarea></div> <div className="form-group-inline"> <div className="form-group"><label htmlFor="task-duedate">Határidő</label><input id="task-duedate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} /></div> <div className="form-group"><label htmlFor="task-priority">Prioritás</label><select id="task-priority" value={priority} onChange={e => setPriority(e.target.value as TaskPriority)}><option value="Alacsony">Alacsony</option><option value="Közepes">Közepes</option><option value="Magas">Magas</option><option value="Kritikus">Kritikus</option></select></div></div> <div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => onClose()}>Mégse</button><button type="submit" className="button button-primary">Feladat Mentése</button></div> </form> </div> </div> );
+};
+
+const EventModal = ({ isOpen, onClose, onAddEvent, initialDate = '' }) => {
+    const [title, setTitle] = useState('');
+    const [date, setDate] = useState('');
+    const [time, setTime] = useState('');
+    const [type, setType] = useState<PlannerEventType>('personal');
+    const [description, setDescription] = useState('');
+    const [location, setLocation] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            setTitle('');
+            setDate(initialDate || new Date().toISOString().split('T')[0]);
+            setTime('');
+            setType('personal');
+            setDescription('');
+            setLocation('');
+        }
+    }, [isOpen, initialDate]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!title.trim() || !date) return;
+        onAddEvent({
+            title: title.trim(),
+            date,
+            time: time || undefined,
+            type,
+            description: description.trim() || undefined,
+            location: location.trim() || undefined,
+        });
+        onClose();
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>Új Esemény Létrehozása</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <form onSubmit={handleSubmit} className="modal-form">
+                    <div className="form-group">
+                        <label htmlFor="event-title">Esemény címe</label>
+                        <input id="event-title" type="text" value={title} onChange={e => setTitle(e.target.value)} required />
+                    </div>
+                    <div className="form-group-inline">
+                        <div className="form-group">
+                            <label htmlFor="event-date">Dátum</label>
+                            <input id="event-date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="event-time">Időpont (opcionális)</label>
+                            <input id="event-time" type="time" value={time} onChange={e => setTime(e.target.value)} />
+                        </div>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="event-type">Típus</label>
+                        <select id="event-type" value={type} onChange={e => setType(e.target.value as PlannerEventType)}>
+                            <option value="personal">Személyes</option>
+                            <option value="work">Munka</option>
+                            <option value="meeting">Megbeszélés</option>
+                            <option value="deadline">Határidő</option>
+                        </select>
+                    </div>
+                     <div className="form-group">
+                        <label htmlFor="event-location">Helyszín</label>
+                        <input id="event-location" type="text" value={location} onChange={e => setLocation(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="event-description">Leírás</label>
+                        <textarea id="event-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}></textarea>
+                    </div>
+                    <div className="modal-actions">
+                        <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
+                        <button type="submit" className="button button-primary">Esemény Mentése</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+const DayDetailModal = ({ isOpen, onClose, date, events }) => {
+    if (!isOpen || !date) return null;
+
+    const formattedDate = new Date(date + 'T00:00:00').toLocaleDateString('hu-HU', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long',
+    });
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>{formattedDate}</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <div className="day-detail-modal-body">
+                    {events.length > 0 ? (
+                        <ul className="day-detail-event-list">
+                            {events.map(event => (
+                                <li key={event.id} className={`day-detail-event-item ${getEventTypeClass(event.type)}`}>
+                                    <div className="event-item-dot"></div>
+                                    <div className="event-item-info">
+                                        <span className="event-item-time">{event.time || 'Egész nap'}</span>
+                                        <span className="event-item-title">{event.title}</span>
+                                        {event.location && <span className="event-item-location"><span className="material-symbols-outlined">location_on</span>{event.location}</span>}
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <div className="widget-placeholder" style={{ background: 'transparent' }}>
+                             <span className="material-symbols-outlined">event_busy</span>
+                            <p>Erre a napra nincsenek események.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const TransactionModal = ({ isOpen, onClose, onAddTransaction }) => {
@@ -1463,6 +1659,7 @@ const App = () => {
     const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
     const [trainings, setTrainings] = useState<TrainingItem[]>(mockTrainings);
     const [contacts, setContacts] = useState<Contact[]>(mockContacts);
+    const [plannerEvents, setPlannerEvents] = useState<PlannerEvent[]>(() => generateInitialPlannerEvents(mockTasks, mockProposals));
 
     const [activeView, setActiveView] = useState<{ id: string; params?: any }>({ id: 'dashboard' });
     const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1470,6 +1667,12 @@ const App = () => {
     
     const [isTaskModalOpen, setTaskModalOpen] = useState(false);
     const [taskToEdit, setTaskToEdit] = useState<TaskItem | null>(null);
+
+    const [isEventModalOpen, setEventModalOpen] = useState(false);
+    const [eventInitialDate, setEventInitialDate] = useState<string | undefined>(undefined);
+
+    const [isDayDetailModalOpen, setDayDetailModalOpen] = useState(false);
+    const [dayDetailModalData, setDayDetailModalData] = useState<{ date: string, events: PlannerEvent[] } | null>(null);
 
     const [isTransactionModalOpen, setTransactionModalOpen] = useState(false);
     const [isProposalModalOpen, setProposalModalOpen] = useState(false);
@@ -1502,6 +1705,10 @@ const App = () => {
     }, []);
     
     useEffect(() => {
+        setPlannerEvents(generateInitialPlannerEvents(tasks, proposals));
+    }, [tasks, proposals]);
+
+    useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
@@ -1528,6 +1735,16 @@ const App = () => {
         setTaskToEdit(task);
         setTaskModalOpen(true);
     };
+    
+    const handleOpenEventModal = (date?: string) => {
+        setEventInitialDate(date);
+        setEventModalOpen(true);
+    };
+    
+    const handleOpenDayModal = (date: string, events: PlannerEvent[]) => {
+        setDayDetailModalData({ date, events });
+        setDayDetailModalOpen(true);
+    };
 
     const handleAddTask = useCallback((taskData) => {
         const newTask: TaskItem = {
@@ -1544,6 +1761,15 @@ const App = () => {
         handleAddNotification({ message: 'Feladat sikeresen létrehozva!', type: 'success' });
     }, [handleAddNotification]);
     
+    const handleAddEvent = (eventData: Omit<PlannerEvent, 'id'>) => {
+        const newEvent: PlannerEvent = {
+            id: `event-${Date.now()}`,
+            ...eventData
+        };
+        setPlannerEvents(prev => [...prev, newEvent].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+        handleAddNotification({ message: 'Esemény sikeresen létrehozva!', type: 'success' });
+    };
+
     const handleAddProject = (projectData) => {
         const newProject: Project = {
             id: `proj-${Date.now()}`,
@@ -1673,9 +1899,9 @@ const App = () => {
 
     const renderView = () => {
         switch (activeView.id) {
-            case 'dashboard': return <DashboardView tasks={tasks} events={mockPlannerEvents} emails={mockEmails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal}/>;
+            case 'dashboard': return <DashboardView tasks={tasks} events={plannerEvents} emails={mockEmails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal}/>;
             case 'tasks': return <TasksView tasks={tasks} setTasks={setTasks} onOpenTaskModal={handleOpenTaskModal} onAddNotification={handleAddNotification} />;
-            case 'planner': return <PlannerView />;
+            case 'planner': return <PlannerView events={plannerEvents} onOpenEventModal={handleOpenEventModal} onOpenDayModal={handleOpenDayModal} />;
             case 'email': return <EmailView ai={ai} onAddTask={handleAddTask} onAddNotification={handleAddNotification} />;
             case 'projects': return <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} />;
             case 'proposals': return <ProposalsView proposals={proposals} tasks={tasks} onOpenProposalModal={() => setProposalModalOpen(true)} />;
@@ -1690,7 +1916,7 @@ const App = () => {
             case 'reports': return <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />;
             case 'ai-chat': return <AiChatView ai={ai} tasks={tasks} onAddTask={handleAddTask} onAddNotification={handleAddNotification} />;
             case 'ai-creative': return <AiCreativeView ai={ai} onSaveToDocs={handleSaveImageToDocs} onAddNotification={handleAddNotification} />;
-            default: return <DashboardView tasks={tasks} events={mockPlannerEvents} emails={mockEmails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} />;
+            default: return <DashboardView tasks={tasks} events={plannerEvents} emails={mockEmails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal}/>;
         }
     };
 
@@ -1733,6 +1959,20 @@ const App = () => {
                 onClose={() => setTaskModalOpen(false)}
                 onAddTask={handleAddTask}
                 initialData={taskToEdit}
+            />
+
+            <EventModal
+                isOpen={isEventModalOpen}
+                onClose={() => setEventModalOpen(false)}
+                onAddEvent={handleAddEvent}
+                initialDate={eventInitialDate}
+            />
+            
+            <DayDetailModal
+                isOpen={isDayDetailModalOpen}
+                onClose={() => setDayDetailModalOpen(false)}
+                date={dayDetailModalData?.date}
+                events={dayDetailModalData?.events || []}
             />
 
             <TransactionModal
@@ -2943,8 +3183,8 @@ const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNoti
 
                 setAiResponse(response.text);
                 const metadata = response.candidates?.[0]?.groundingMetadata;
-                if (metadata?.groundingMetadata) {
-                    setSearchSources(metadata.groundingMetadata);
+                if (metadata?.groundingChunks) {
+                    setSearchSources(metadata.groundingChunks);
                 }
 
             } catch (err) {
