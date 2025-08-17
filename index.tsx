@@ -1760,7 +1760,7 @@ const App = () => {
             priority: taskData.priority || 'Közepes',
             category: taskData.category || 'Személyes',
             status: 'Teendő',
-            createdAt: new new Date().toISOString(),
+            createdAt: new Date().toISOString(),
         };
         setTasks(prev => [newTask, ...prev]);
         handleAddNotification({ message: 'Feladat sikeresen létrehozva!', type: 'success' });
@@ -2446,20 +2446,26 @@ const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
         }
     };
     
-    const pieChartStyle = {
-        background: `conic-gradient(${(Object.entries(summary.expenseByCategory) as [FinancialCategory, number][])
-            .sort(([, a], [, b]) => b - a)
-            .reduce((acc, [category, amount], _, arr) => {
-                const total = arr.reduce((sum, [, val]) => sum + val, 0);
-                if (total === 0) return acc;
-                const percentage = (amount / total) * 100;
-                const end = acc.start + percentage;
-                acc.str += `${getCategoryColor(category as FinancialCategory)} ${acc.start}% ${end}%, `;
-                acc.start = end;
-                return acc;
-            }, { str: '', start: 0 }).str.slice(0, -2)
-        })`
-    };
+    const pieChartStyle = useMemo(() => {
+        const sortedExpenses = (Object.entries(summary.expenseByCategory) as [FinancialCategory, number][])
+            .sort(([, a], [, b]) => b - a);
+        
+        const totalExpense = summary.expense;
+        if (totalExpense === 0) {
+            return { background: 'var(--color-background-secondary)' };
+        }
+
+        let cumulativePercentage = 0;
+        const gradientParts = sortedExpenses.map(([category, amount]) => {
+            const percentage = (amount / totalExpense) * 100;
+            const start = cumulativePercentage;
+            const end = cumulativePercentage + percentage;
+            cumulativePercentage = end;
+            return `${getCategoryColor(category)} ${start}% ${end}%`;
+        }).join(', ');
+
+        return { background: `conic-gradient(${gradientParts})` };
+    }, [summary.expenseByCategory, summary.expense]);
 
     return (
         <View title="Pénzügyek" subtitle="Bevételek és kiadások nyomon követése." actions={<button className="button button-primary" onClick={onOpenTransactionModal}><span className="material-symbols-outlined">add</span>Új Tranzakció</button>}>
@@ -2479,7 +2485,7 @@ const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
                             <div key={budget.id} className="card budget-card">
                                 <div className="budget-card-header">
                                     <span>{budget.category}</span>
-                                    <span>{usage.used.toLocaleString('hu-HU')} / {usage.amount.toLocaleString('hu-HU')} Ft</span>
+                                    <span>{usage.used.toLocaleString('hu-HU')} / {usage.total.toLocaleString('hu-HU')} Ft</span>
                                 </div>
                                 <div className="budget-progress-bar-container">
                                     <div className={`budget-progress-bar ${progressClass}`} style={{width: `${usage.percentage}%`}}></div>
@@ -3074,4 +3080,197 @@ const ContactsView = ({ contacts, projects, proposals, emails, onOpenContactModa
                             </div>
                             <div className="contact-info-grid">
                                 {selectedContact.email && <div><span className="material-symbols-outlined">email</span><span>{selectedContact.email}</span></div>}
-                                {selectedContact.phone && <div><span className="material-symbols-outlined">phone</span><span>{
+                                {selectedContact.phone && <div><span className="material-symbols-outlined">phone</span><span>{selectedContact.phone}</span></div>}
+                            </div>
+                            {selectedContact.notes && (
+                                <div className="contact-notes-section">
+                                    <h4>Jegyzetek</h4>
+                                    <p>{selectedContact.notes}</p>
+                                </div>
+                            )}
+                            {(() => {
+                                const { relatedProjects, relatedProposals, relatedEmails } = findRelatedItems(selectedContact);
+                                if (!relatedProjects.length && !relatedProposals.length && !relatedEmails.length) return null;
+                                
+                                return (
+                                    <div className="related-items-section">
+                                        <h4>Kapcsolódó Elemek</h4>
+                                        {relatedProjects.length > 0 && (
+                                            <div className="related-list">
+                                                <h5>Projektek</h5>
+                                                <ul>{relatedProjects.map(p => <li key={p.id}><span className="material-symbols-outlined">schema</span>{p.title}</li>)}</ul>
+                                            </div>
+                                        )}
+                                        {relatedProposals.length > 0 && (
+                                            <div className="related-list">
+                                                <h5>Pályázatok</h5>
+                                                <ul>{relatedProposals.map(p => <li key={p.id}><span className="material-symbols-outlined">description</span>{p.title}</li>)}</ul>
+                                            </div>
+                                        )}
+                                        {relatedEmails.length > 0 && (
+                                            <div className="related-list">
+                                                <h5>Emailek</h5>
+                                                <ul>{relatedEmails.map(e => <li key={e.id} title={e.subject}><span className="material-symbols-outlined">mail</span>{e.subject}</li>)}</ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    ) : (
+                        <div className="widget-placeholder">
+                            <span className="material-symbols-outlined">person_search</span>
+                            <p>Válasszon ki egy kapcsolatot a részletek megtekintéséhez.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </View>
+    );
+};
+
+const GlobalHeader = ({ onToggleNav, onOpenSearch }) => (
+    <header className="global-header">
+        <button onClick={onToggleNav} className="button button-icon-only mobile-nav-toggle">
+            <span className="material-symbols-outlined">menu</span>
+        </button>
+        <div className="search-bar-container" onClick={onOpenSearch}>
+            <span className="material-symbols-outlined">search</span>
+            <span className="search-bar-text">Keresés...</span>
+            <div className="search-shortcut">
+                <kbd>Ctrl</kbd>+<kbd>K</kbd>
+            </div>
+        </div>
+        <div className="header-actions">
+            <button className="button button-icon-only">
+                <span className="material-symbols-outlined">notifications</span>
+            </button>
+             <div className="user-profile">
+                <div className="avatar-sm">F</div>
+            </div>
+        </div>
+    </header>
+);
+
+const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNotification }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [results, setResults] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => inputRef.current?.focus(), 100);
+        } else {
+            setSearchTerm('');
+            setResults(null);
+            setIsLoading(false);
+        }
+    }, [isOpen]);
+
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        if (!searchTerm.trim()) return;
+        setIsLoading(true);
+
+        const prompt = `A felhasználó a P-Day Light alkalmazásban keres. A keresési kifejezés: "${searchTerm}". Keresd meg a releváns elemeket a megadott adathalmazokból. Ha a keresés általános tudás jellegű (pl. "mi a fővárosa..."), akkor használd a googleSearch eszközt. Válaszodban mindig add meg az elem típusát.`;
+
+        const dataContext = `
+            Feladatok: ${JSON.stringify(allData.tasks.map(t => ({ id: t.id, title: t.title, status: t.status })))}
+            Projektek: ${JSON.stringify(allData.projects.map(p => ({ id: p.id, title: p.title })))}
+            Dokumentumok: ${JSON.stringify(allData.docs.map(d => ({ id: d.id, title: d.title, type: d.type })))}
+            Pályázatok: ${JSON.stringify(allData.proposals.map(p => ({ id: p.id, title: p.title })))}
+            Kapcsolatok: ${JSON.stringify(allData.contacts.map(c => ({ id: c.id, name: c.name })))}
+        `;
+
+        const fullPrompt = `${prompt}\n\nReleváns adatok:\n${dataContext}`;
+
+        try {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: fullPrompt,
+                config: { tools: [{ googleSearch: {} }] },
+            });
+            setResults(response);
+        } catch (err) {
+            console.error("Global search error:", err);
+            onAddNotification({ message: 'Hiba a keresés során.', type: 'error' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    const handleResultClick = (result) => {
+        const title = result.title || result.web?.title;
+        if (!title) return;
+
+        const findAndNav = (items, viewId, key = 'title') => {
+            const item = items.find(i => (i[key] || '').toLowerCase() === title.toLowerCase());
+            if (item) {
+                onNavigate(viewId, { id: item.id });
+                onClose();
+                return true;
+            }
+            return false;
+        };
+
+        if (findAndNav(allData.tasks, 'tasks')) return;
+        if (findAndNav(allData.projects, 'projects')) return;
+        if (findAndNav(allData.docs, 'docs')) return;
+        if (findAndNav(allData.proposals, 'proposals')) return;
+        if (findAndNav(allData.contacts, 'contacts', 'name')) return;
+        
+        onAddNotification({ message: 'Navigáció ehhez az elemhez még nem implementált.', type: 'info' });
+    };
+
+    if (!isOpen) return null;
+    
+    const groundingChunks = results?.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card global-search-modal" onClick={e => e.stopPropagation()}>
+                <form onSubmit={handleSearch}>
+                    <div className="search-input-wrapper">
+                        <span className="material-symbols-outlined">search</span>
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            placeholder="Keresés az alkalmazásban vagy a weben..."
+                        />
+                    </div>
+                </form>
+                <div className="search-results-container">
+                    {isLoading && <div className="widget-placeholder" style={{ background: 'transparent' }}><span className="material-symbols-outlined progress_activity">progress_activity</span><p>Keresés...</p></div>}
+                    {!isLoading && results && (
+                        <div className="search-results-content">
+                             <div className="markdown-content">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{results.text}</ReactMarkdown>
+                            </div>
+                            {groundingChunks && groundingChunks.length > 0 && (
+                                <div className="grounding-results">
+                                    <h4>Források:</h4>
+                                    <ul>
+                                        {groundingChunks.map((chunk, index) => (
+                                            chunk.web && <li key={index}><a href={chunk.web.uri} target="_blank" rel="noopener noreferrer">{chunk.web.title}</a></li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {!isLoading && !results && <div className="widget-placeholder" style={{ background: 'transparent' }}><span className="material-symbols-outlined">manage_search</span><p>Kezdjen el gépelni a kereséshez.</p></div>}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
