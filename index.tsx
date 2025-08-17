@@ -566,7 +566,7 @@ const EventModal = ({ isOpen, onClose, onAddEvent, initialDate = '' }) => {
     );
 };
 
-const DayDetailModal = ({ isOpen, onClose, date, events }) => {
+const DayDetailModal = ({ isOpen, onClose, date, events, onOpenEventModal }) => {
     if (!isOpen || !date) return null;
 
     const formattedDate = new Date(date + 'T00:00:00').toLocaleDateString('hu-HU', {
@@ -603,6 +603,11 @@ const DayDetailModal = ({ isOpen, onClose, date, events }) => {
                             <p>Erre a napra nincsenek események.</p>
                         </div>
                     )}
+                </div>
+                <div className="modal-actions" style={{ marginTop: 0, borderTop: 'none', paddingTop: 'var(--spacing-md)'}}>
+                    <button type="button" className="button button-primary" onClick={() => { onOpenEventModal(date); onClose(); }}>
+                       <span className="material-symbols-outlined">add</span> Új esemény erre a napra
+                    </button>
                 </div>
             </div>
         </div>
@@ -1755,7 +1760,7 @@ const App = () => {
             priority: taskData.priority || 'Közepes',
             category: taskData.category || 'Személyes',
             status: 'Teendő',
-            createdAt: new Date().toISOString(),
+            createdAt: new new Date().toISOString(),
         };
         setTasks(prev => [newTask, ...prev]);
         handleAddNotification({ message: 'Feladat sikeresen létrehozva!', type: 'success' });
@@ -1973,6 +1978,7 @@ const App = () => {
                 onClose={() => setDayDetailModalOpen(false)}
                 date={dayDetailModalData?.date}
                 events={dayDetailModalData?.events || []}
+                onOpenEventModal={handleOpenEventModal}
             />
 
             <TransactionModal
@@ -2473,7 +2479,7 @@ const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
                             <div key={budget.id} className="card budget-card">
                                 <div className="budget-card-header">
                                     <span>{budget.category}</span>
-                                    <span>{usage.used.toLocaleString('hu-HU')} / {budget.amount.toLocaleString('hu-HU')} Ft</span>
+                                    <span>{usage.used.toLocaleString('hu-HU')} / {usage.amount.toLocaleString('hu-HU')} Ft</span>
                                 </div>
                                 <div className="budget-progress-bar-container">
                                     <div className={`budget-progress-bar ${progressClass}`} style={{width: `${usage.percentage}%`}}></div>
@@ -2883,15 +2889,14 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
     const { weekStart, weekEnd, weekLabel } = useMemo(() => {
         const tempDate = new Date();
         tempDate.setHours(0, 0, 0, 0);
-        // Move to the target week by applying the offset
-        tempDate.setDate(tempDate.getDate() + (weekOffset * 7));
+        tempDate.setDate(tempDate.getDate() + weekOffset * 7);
 
         // Find the Monday of that week. Day 0 is Sunday.
         const dayOfWeek = tempDate.getDay();
-        const distanceToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-        tempDate.setDate(tempDate.getDate() + distanceToMonday);
-
-        const start = new Date(tempDate); // This is now Monday at 00:00:00
+        const diffToMonday = tempDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        
+        const start = new Date(tempDate.setDate(diffToMonday));
+        start.setHours(0,0,0,0);
 
         const end = new Date(start);
         end.setDate(start.getDate() + 6); // Add 6 days to get Sunday
@@ -3069,209 +3074,4 @@ const ContactsView = ({ contacts, projects, proposals, emails, onOpenContactModa
                             </div>
                             <div className="contact-info-grid">
                                 {selectedContact.email && <div><span className="material-symbols-outlined">email</span><span>{selectedContact.email}</span></div>}
-                                {selectedContact.phone && <div><span className="material-symbols-outlined">phone</span><span>{selectedContact.phone}</span></div>}
-                            </div>
-                            {selectedContact.notes && <div className="contact-notes"><h4>Jegyzetek</h4><p>{selectedContact.notes}</p></div>}
-                            
-                            <div className="related-items-section">
-                                <h4>Kapcsolódó Elemek</h4>
-                                {/* You can add more detailed lists here */}
-                                <p>Projektek: {findRelatedItems(selectedContact).relatedProjects.length}</p>
-                                <p>Pályázatok: {findRelatedItems(selectedContact).relatedProposals.length}</p>
-                                <p>Emailek: {findRelatedItems(selectedContact).relatedEmails.length}</p>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="widget-placeholder">
-                            <span className="material-symbols-outlined">person_search</span>
-                            <p>Válasszon ki egy kapcsolatot a részletek megtekintéséhez.</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </View>
-    );
-};
-
-const GlobalHeader = ({ onToggleNav, onOpenSearch }) => (
-    <header className="global-header">
-        <button onClick={onToggleNav} className="button button-icon-only mobile-nav-toggle" aria-label="Navigáció">
-            <span className="material-symbols-outlined">menu</span>
-        </button>
-        <div className="search-bar-container" onClick={onOpenSearch}>
-            <span className="material-symbols-outlined">search</span>
-            <span className="search-bar-text">Keresés... (Ctrl+K)</span>
-        </div>
-        <div className="header-actions">
-            <button className="button button-icon-only" aria-label="Értesítések">
-                <span className="material-symbols-outlined">notifications</span>
-            </button>
-            <div className="user-profile">
-                <div className="avatar-sm" title="Felhasználó">U</div>
-            </div>
-        </div>
-    </header>
-);
-
-const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNotification }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [results, setResults] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [aiResponse, setAiResponse] = useState('');
-    const [searchSources, setSearchSources] = useState(null);
-    const inputRef = useRef(null);
-
-    useEffect(() => {
-        if (isOpen) {
-            setTimeout(() => inputRef.current?.focus(), 100);
-        } else {
-            // Reset state when closing
-            setTimeout(() => {
-                 setSearchTerm('');
-                 setResults([]);
-                 setAiResponse('');
-                 setSearchSources(null);
-            }, 200); // delay to allow closing animation
-        }
-    }, [isOpen]);
-    
-    useEffect(() => {
-        if (!searchTerm) {
-            setResults([]);
-            setAiResponse('');
-            setSearchSources(null);
-            return;
-        }
-
-        if (searchTerm.startsWith('/ai ')) {
-            setResults([]);
-            return;
-        }
-
-        // Local search logic
-        const localResults = [];
-        const lowerTerm = searchTerm.toLowerCase();
-
-        if(allData.tasks) allData.tasks.filter(t => t.title.toLowerCase().includes(lowerTerm)).slice(0, 3).forEach(item => localResults.push({ type: 'Feladat', item, icon: 'task_alt', viewId: 'tasks' }));
-        if(allData.projects) allData.projects.filter(p => p.title.toLowerCase().includes(lowerTerm)).slice(0, 2).forEach(item => localResults.push({ type: 'Projekt', item, icon: 'schema', viewId: 'projects' }));
-        if(allData.docs) allData.docs.filter(d => d.title.toLowerCase().includes(lowerTerm)).slice(0, 3).forEach(item => localResults.push({ type: 'Dokumentum', item, icon: 'article', viewId: 'docs' }));
-        if(allData.contacts) allData.contacts.filter(c => c.name.toLowerCase().includes(lowerTerm)).slice(0, 2).forEach(item => localResults.push({ type: 'Kapcsolat', item, icon: 'contacts', viewId: 'contacts' }));
-
-        setResults(localResults);
-
-    }, [searchTerm, allData]);
-
-    const handleSearch = async (e) => {
-        if (e.key === 'Enter' && searchTerm.startsWith('/ai ')) {
-            e.preventDefault();
-            const prompt = searchTerm.substring(4).trim();
-            if (!prompt) return;
-
-            setIsLoading(true);
-            setResults([]);
-            setAiResponse('');
-            setSearchSources(null);
-
-            try {
-                const response = await ai.models.generateContent({
-                   model: "gemini-2.5-flash",
-                   contents: prompt,
-                   config: {
-                     tools: [{googleSearch: {}}],
-                   },
-                });
-
-                setAiResponse(response.text);
-                const metadata = response.candidates?.[0]?.groundingMetadata;
-                if (metadata?.groundingChunks) {
-                    setSearchSources(metadata.groundingChunks);
-                }
-
-            } catch (err) {
-                console.error("AI Search Error:", err);
-                setAiResponse("Hiba történt a keresés közben. Kérjük, próbálja újra később.");
-                onAddNotification({ message: 'Hiba történt az AI keresés során.', type: 'error' });
-            } finally {
-                setIsLoading(false);
-            }
-        }
-    };
-    
-    const handleResultClick = (result) => {
-        if(result.viewId === 'docs' && result.item.type === 'note') {
-            onNavigate('doc-editor', { docId: result.item.id });
-        } else {
-             onNavigate(result.viewId);
-        }
-        onClose();
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content card global-search-modal" onClick={e => e.stopPropagation()}>
-                <div className="search-modal-input-container">
-                    <span className="material-symbols-outlined">{searchTerm.startsWith('/ai ') ? 'travel_explore' : 'search'}</span>
-                    <input
-                        ref={inputRef}
-                        type="text"
-                        placeholder="Keress bárhol... vagy használd az /ai parancsot a Gemini kereséshez"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        onKeyDown={handleSearch}
-                    />
-                </div>
-                <div className="search-modal-results">
-                    {isLoading ? (
-                        <div className="widget-placeholder">
-                            <span className="material-symbols-outlined progress_activity">progress_activity</span>
-                            <p>Keresés az interneten...</p>
-                        </div>
-                    ) : aiResponse ? (
-                        <div className="ai-search-response">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiResponse}</ReactMarkdown>
-                            {searchSources && searchSources.length > 0 && (
-                                <div className="search-sources">
-                                    <h4>Források</h4>
-                                    <ul>
-                                        {searchSources.map((source, index) => (
-                                            <li key={index}>
-                                                <a href={source.web.uri} target="_blank" rel="noopener noreferrer">{source.web.title || source.web.uri}</a>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-                    ) : results.length > 0 ? (
-                        <ul className="search-results-list">
-                            {results.map((result, index) => (
-                                <li key={index} className="search-result-item" onClick={() => handleResultClick(result)}>
-                                    <span className="material-symbols-outlined">{result.icon}</span>
-                                    <div className="result-info">
-                                        <span className="result-title">{result.item.title || result.item.name}</span>
-                                        <span className="result-type">{result.type}</span>
-                                    </div>
-                                    <span className="material-symbols-outlined">north_west</span>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : searchTerm ? (
-                        <div className="widget-placeholder"><p>Nincs találat erre: "{searchTerm}"</p></div>
-                    ) : (
-                         <div className="widget-placeholder"><p>Keress feladatok, projektek, dokumentumok és egyebek között.</p></div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+                                {selectedContact.phone && <div><span className="material-symbols-outlined">phone</span><span>{
