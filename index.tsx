@@ -2002,11 +2002,12 @@ const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNoti
                    contents: term,
                    config: { tools: [{googleSearch: {}}] },
                 });
+                const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
                 setResults(prev => ({ 
                     ...prev, 
                     web: { 
                         answer: response.text, 
-                        sources: (response.candidates?.[0]?.groundingMetadata?.groundingChunks as any[]) || []
+                        sources: Array.isArray(groundingChunks) ? groundingChunks : []
                     } 
                 }));
             } catch (err) {
@@ -2068,7 +2069,7 @@ const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNoti
                             <div className="web-answer">
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{results.web.answer}</ReactMarkdown>
                             </div>
-                            {results.web.sources && Array.isArray(results.web.sources) && results.web.sources.length > 0 && (
+                            {results.web.sources && results.web.sources.length > 0 && (
                                 <div className="web-sources">
                                     <h5>Források:</h5>
                                     <ul>
@@ -3949,7 +3950,7 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
 
     // --- Monthly Financial Report Logic ---
     const financialHistory = useMemo(() => {
-        const history = [];
+        const history: { label: string; income: number; expense: number }[] = [];
         for (let i = 2; i >= 0; i--) { // Last 3 months including current
             const date = new Date();
             date.setDate(1); // Avoid month-end issues
@@ -4045,7 +4046,7 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
                         </div>
                         <div className="report-metrics">
                             <div className="report-metric"><span>Teljesített feladatok</span><strong>{weeklyTasksData.completedThisWeek.length}</strong></div>
-                            {Object.entries(weeklyTasksData.priorityCounts).map(([p, c]) => <div key={p} className="report-metric"><span>{p as string} prior.</span><strong>{c as React.ReactNode}</strong></div>)}
+                            {Object.entries(weeklyTasksData.priorityCounts).map(([p, c]) => <div key={p} className="report-metric"><span>{p} prior.</span><strong>{c}</strong></div>)}
                         </div>
                         <button onClick={generateTaskReport} className="button button-secondary" disabled={isTaskReportLoading}>
                             {isTaskReportLoading ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">psychology</span>} AI Elemzés
