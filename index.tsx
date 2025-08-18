@@ -280,6 +280,7 @@ const navigationData: NavItem[] = [
     { id: 'personal', label: 'Saját Ügyek', icon: 'person', subItems: [ { id: 'planner', label: 'Naptár', icon: 'calendar_month' }, { id: 'tasks', label: 'Feladatok', icon: 'task_alt' }, { id: 'finances', label: 'Pénzügyek', icon: 'account_balance_wallet' }, { id: 'docs', label: 'Dokumentumok', icon: 'folder' }, ], },
     { id: 'work', label: 'Munka', icon: 'work', subItems: [ { id: 'email', label: 'Email', icon: 'mail' }, { id: 'projects', label: 'Projektek', icon: 'schema' }, { id: 'proposals', label: 'Pályázatok', icon: 'description' }, { id: 'contacts', label: 'Kapcsolatok', icon: 'contacts' }, { id: 'training', label: 'Képzések', icon: 'school' }, ], },
     { id: 'ai', label: 'Gemini Asszisztens', icon: 'smart_toy', subItems: [ { id: 'ai-chat', label: 'Általános Chat', icon: 'chat' }, { id: 'ai-creative', label: 'Kreatív Eszközök', icon: 'brush' }, ], },
+    { id: 'settings', label: 'Beállítások', icon: 'settings' },
 ];
 
 
@@ -2134,6 +2135,7 @@ const App = () => {
     const [contacts, setContacts] = useState<Contact[]>(mockContacts);
     const [emails, setEmails] = useState<EmailMessage[]>(mockInitialEmails);
     const [plannerEvents, setPlannerEvents] = useState<PlannerEvent[]>(() => generateInitialPlannerEvents(mockTasks, mockProposals));
+    const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
     const [activeView, setActiveView] = useState<{ id: string; params?: any }>({ id: 'dashboard' });
     const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -2475,6 +2477,7 @@ const App = () => {
             case 'reports': return <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />;
             case 'ai-chat': return <AiChatView ai={ai} tasks={tasks} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />;
             case 'ai-creative': return <AiCreativeView ai={ai} onSaveToDocs={handleSaveImageToDocs} onAddNotification={handleAddNotification} />;
+            case 'settings': return <SettingsView theme={theme} setTheme={setTheme} onAddNotification={handleAddNotification}/>
             default: return <DashboardView tasks={tasks} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
         }
     };
@@ -2484,7 +2487,7 @@ const App = () => {
     }
 
     return (
-        <div className={`app-layout ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${isMobileNavOpen ? 'mobile-nav-open' : ''}`}>
+        <div className={`app-layout ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${isMobileNavOpen ? 'mobile-nav-open' : ''} theme-${theme}`}>
             <div className="mobile-nav-overlay" onClick={() => setMobileNavOpen(false)}></div>
             <Sidebar
                 activeViewId={activeView.id}
@@ -3971,22 +3974,111 @@ const TrainingView = ({ trainings, onOpenTrainingModal, onSaveTraining, ai, onAd
     );
 };
 
+const SettingsView = ({ theme, setTheme, onAddNotification }) => {
+    const [taskNotifications, setTaskNotifications] = useState(true);
+    const [emailNotifications, setEmailNotifications] = useState(true);
+
+    const handleExport = () => {
+        onAddNotification({ message: 'Az adatok exportálása megkezdődött.', type: 'info' });
+        // Mock export logic here
+    };
+
+    const handleImport = () => {
+        onAddNotification({ message: 'Fájl kiválasztása importáláshoz...', type: 'info' });
+        // Mock import logic here
+    };
+    
+    return (
+        <View title="Beállítások" subtitle="Alkalmazás testreszabása és adatok kezelése.">
+            <div className="settings-view-grid">
+                {/* Profile Card */}
+                <div className="card settings-card">
+                    <h3><span className="material-symbols-outlined">account_circle</span>Profil</h3>
+                    <div className="profile-info">
+                        <div className="avatar-lg">F</div>
+                        <div>
+                            <h4>Felhasználó</h4>
+                            <p>felhasznalo@domain.com</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Appearance Card */}
+                <div className="card settings-card">
+                    <h3><span className="material-symbols-outlined">palette</span>Megjelenés</h3>
+                    <p className="setting-description">Válasszon az elérhető témák közül.</p>
+                    <div className="theme-selector">
+                        <div className={`theme-option ${theme === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')}>
+                            <div className="theme-preview theme-dark"></div>
+                            <span>Sötét Mód</span>
+                        </div>
+                        <div className={`theme-option ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')}>
+                            <div className="theme-preview theme-light"></div>
+                            <span>Világos Mód</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Notifications Card */}
+                <div className="card settings-card">
+                    <h3><span className="material-symbols-outlined">notifications</span>Értesítések</h3>
+                    <div className="setting-item">
+                        <label htmlFor="task-notif">Feladat emlékeztetők</label>
+                        <label className="switch">
+                            <input id="task-notif" type="checkbox" checked={taskNotifications} onChange={() => setTaskNotifications(!taskNotifications)} />
+                            <span className="slider round"></span>
+                        </label>
+                    </div>
+                    <div className="setting-item">
+                        <label htmlFor="email-notif">Új email értesítések</label>
+                        <label className="switch">
+                            <input id="email-notif" type="checkbox" checked={emailNotifications} onChange={() => setEmailNotifications(!emailNotifications)} />
+                            <span className="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+
+                {/* API & Data Card */}
+                <div className="card settings-card">
+                    <h3><span className="material-symbols-outlined">dns</span>API és Adatok</h3>
+                     <div className="setting-item">
+                        <span>Gemini API Státusz</span>
+                        <span className="api-status connected">
+                            <span className="status-dot"></span>
+                            Csatlakoztatva
+                        </span>
+                    </div>
+                    <p className="setting-description">Kezelje az alkalmazás adatait.</p>
+                    <div className="data-actions">
+                        <button className="button button-secondary" onClick={handleExport}><span className="material-symbols-outlined">download</span>Adatok Exportálása</button>
+                        <button className="button button-secondary" onClick={handleImport}><span className="material-symbols-outlined">upload</span>Adatok Importálása</button>
+                    </div>
+                </div>
+            </div>
+        </View>
+    );
+};
+
 const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
     const [timeRange, setTimeRange] = useState<'weekly' | 'monthly'>('weekly');
 
     const { start, end } = useMemo(() => {
         const now = new Date();
-        const end = new Date(now);
-        end.setHours(23, 59, 59, 999);
-        const start = new Date(now);
+        const endDate = new Date(now);
+        endDate.setHours(23, 59, 59, 999);
+        
+        const startDate = new Date(now);
         if (timeRange === 'weekly') {
-            start.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1)); // Monday as start of week
-            start.setHours(0, 0, 0, 0);
+            // Monday as start of week
+            const day = startDate.getDay(); // 0=Sun, 1=Mon, etc.
+            const diff = startDate.getDate() - day + (day === 0 ? -6 : 1);
+            startDate.setDate(diff);
+            startDate.setHours(0, 0, 0, 0);
         } else { // monthly
-            start.setDate(1);
-            start.setHours(0, 0, 0, 0);
+            startDate.setDate(1);
+            startDate.setHours(0, 0, 0, 0);
         }
-        return { start, end };
+        return { start: startDate, end: endDate };
     }, [timeRange]);
 
     const filteredData = useMemo(() => {
@@ -4009,4 +4101,129 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
     const weeklyTasksData: WeeklyTaskData[] = useMemo(() => {
         if (timeRange !== 'weekly') return [];
         const days = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V'];
-        const weekData: WeeklyTaskData[] = days
+        const weekData: WeeklyTaskData[] = days.map(day => ({ day, completed: 0 }));
+        
+        filteredData.tasksInRange.forEach(task => {
+            const completedDay = new Date(task.completedAt!).getDay(); // 0 for Sun, 1 for Mon
+            const index = completedDay === 0 ? 6 : completedDay - 1; // Adjust for H-V week
+            if (index >= 0 && index < 7) {
+                weekData[index].completed++;
+            }
+        });
+
+        return weekData;
+    }, [filteredData.tasksInRange, timeRange]);
+
+    const maxWeeklyTasks = useMemo(() => Math.max(...weeklyTasksData.map(d => d.completed), 1), [weeklyTasksData]);
+
+    const financialSummary = useMemo(() => {
+        const income = filteredData.transactionsInRange
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        const expense = filteredData.transactionsInRange
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + t.amount, 0);
+        return { income, expense };
+    }, [filteredData.transactionsInRange]);
+
+    const projectSummary = useMemo(() => {
+        const active = projects.filter(p => p.status !== 'Kész').length;
+        const completed = projects.filter(p => p.status === 'Kész').length;
+        return { active, completed };
+    }, [projects]);
+    
+    const [aiSummary, setAiSummary] = useState('');
+    const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+    
+    const generateSummary = async () => {
+        setIsGeneratingSummary(true); setAiSummary('');
+        const prompt = `Te egy produktivitási elemző vagy. Készíts egy rövid, 2-3 mondatos, adatvezérelt, motiváló összefoglalót a felhasználó heti teljesítményéről. A válaszod legyen magyarul.\n\nElvégzett feladatok: ${filteredData.tasksInRange.length}\nBevétel: ${financialSummary.income} Ft\nKiadás: ${financialSummary.expense} Ft\nAktív projektek: ${projectSummary.active}`;
+        try {
+            const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
+            setAiSummary(response.text);
+        } catch (err) {
+            console.error("AI Report Summary error:", err);
+            setAiSummary('Hiba az összegzés generálása közben.');
+        } finally {
+            setIsGeneratingSummary(false);
+        }
+    };
+
+
+    return (
+        <View title="Riportok" subtitle={`A ${timeRange === 'weekly' ? 'heti' : 'havi'} teljesítmény áttekintése.`}>
+            <div className="reports-view-container">
+                <div className="report-header">
+                    <div className="report-controls">
+                        <label>Időtáv:</label>
+                        <select value={timeRange} onChange={e => setTimeRange(e.target.value as any)}>
+                            <option value="weekly">Heti</option>
+                            <option value="monthly">Havi</option>
+                        </select>
+                    </div>
+                     <div className="card ai-summary-widget">
+                        {aiSummary ? <p>{aiSummary}</p> : <p>Készítsen AI-alapú összegzést a teljesítményéről.</p>}
+                        <button onClick={generateSummary} className="button button-secondary" disabled={isGeneratingSummary}>
+                            {isGeneratingSummary ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">auto_awesome</span>}
+                            Összegzés
+                        </button>
+                    </div>
+                </div>
+
+                <div className="reports-view-grid">
+                    <div className="card report-widget">
+                        <h3>Feladatteljesítmény</h3>
+                        <div className="report-content">
+                            <div className="report-metrics">
+                                <strong>{filteredData.tasksInRange.length}</strong>
+                                <span>Elvégzett feladat</span>
+                            </div>
+                            {timeRange === 'weekly' && (
+                                <div className="bar-chart">
+                                    {weeklyTasksData.map(data => (
+                                        <div key={data.day} className="bar-chart-item">
+                                            <div className="bar" style={{ height: `${(data.completed / maxWeeklyTasks) * 100}%` }} title={`${data.completed} feladat`}></div>
+                                            <span className="bar-label">{data.day}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="card report-widget">
+                         <h3>Pénzügyi Mozgások</h3>
+                          <div className="report-content" style={{gap: 'var(--spacing-xl)'}}>
+                            <div className="report-metrics">
+                                <strong style={{color: 'var(--color-accent)'}}>+{financialSummary.income.toLocaleString()} Ft</strong>
+                                <span>Bevétel</span>
+                            </div>
+                            <div className="report-metrics">
+                                <strong style={{color: 'var(--color-destructive)'}}>-{financialSummary.expense.toLocaleString()} Ft</strong>
+                                <span>Kiadás</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                     <div className="card report-widget">
+                         <h3>Projektek Állapota</h3>
+                          <div className="report-content" style={{gap: 'var(--spacing-xl)'}}>
+                            <div className="report-metrics">
+                                <strong>{projectSummary.active}</strong>
+                                <span>Aktív</span>
+                            </div>
+                            <div className="report-metrics">
+                                <strong>{projectSummary.completed}</strong>
+                                <span>Befejezett</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </View>
+    );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
+root.render(<App />);
