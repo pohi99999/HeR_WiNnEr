@@ -348,7 +348,7 @@ a:hover { color: var(--color-primary-light); }
     }
 
     /* Make Kanban boards scrollable */
-    .tasks-kanban-board-container, .projects-view-container {
+    .tasks-kanban-board-container, .proposals-board-container, .projects-view-container {
         margin: 0 calc(-1 * var(--spacing-md)); /* Use negative margin to get edge-to-edge scroll */
         padding: 0 var(--spacing-md);
         overflow-x: auto;
@@ -416,6 +416,149 @@ a:hover { color: var(--color-primary-light); }
     padding: 0 var(--spacing-sm);
 }
 
-.nav-item {
-    
+.nav-section-header.nav-link {
+    background: transparent;
+    border: none;
+    width: 100%;
+    cursor: pointer;
+    text-align: inherit;
+    font-family: inherit;
+    color: var(--color-text-secondary);
+}
+
+.nav-section-header.nav-link:hover {
+    color: var(--color-text-primary);
+}
+
+/* Empty States & Placeholders */
+.empty-state-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--spacing-md);
+    color: var(--color-text-tertiary);
+    height: 100%;
+    width: 100%;
+    min-height: 200px;
+    padding: var(--spacing-lg);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--border-radius-lg);
+    background-color: rgba(0,0,0,0.1);
+}
+
+.theme-light .empty-state-placeholder {
+    background-color: rgba(0,0,0,0.02);
+}
+
+.empty-state-placeholder .material-symbols-outlined {
+    font-size: 48px;
+    color: var(--color-text-tertiary);
+    opacity: 0.8;
+}
+
+.empty-state-placeholder p {
+    font-size: 1.1rem;
+    color: var(--color-text-secondary);
+    max-width: 40ch;
+    margin-top: 0;
+}
+
+.empty-state-placeholder span:not(.material-symbols-outlined) {
+    font-size: 0.9rem;
+}
+
+.kanban-empty-placeholder {
+    padding: var(--spacing-lg);
+    text-align: center;
+    color: var(--color-text-tertiary);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--border-radius-md);
+    margin: var(--spacing-sm);
+    font-size: 0.9rem;
+}
+
+/* Skeleton Loaders */
+.skeleton-loader {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    width: 100%;
+}
+.skeleton-line {
+    height: 1.2em;
+    background-color: var(--color-surface-glass-light);
+    border-radius: var(--border-radius-sm);
+    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.skeleton-line:last-child {
+    width: 60% !important;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Hover Effects */
+.card {
+    transition: transform var(--transition-std), box-shadow var(--transition-std), border-color var(--transition-std);
+}
+
+.task-card-kanban.card, .project-card.card, .proposal-card.card, .doc-card.card, .training-card.card {
+    cursor: pointer;
+}
+
+.task-card-kanban.card:hover, .project-card.card:hover, .proposal-card.card:hover, .doc-card.card:hover, .training-card.card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--color-border-strong);
+}
+
+.contact-list-item:hover, .email-list-item:hover, .widget-list-item:hover {
+    background-color: var(--color-surface-glass-hover);
+}
+
+/* Proposal Detail Modal Layout */
+.proposal-detail-modal-body {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: var(--spacing-lg);
+    flex-grow: 1;
+    overflow: hidden;
+    padding-top: var(--spacing-md);
+}
+
+.proposal-detail-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    overflow-y: auto;
+    padding-right: var(--spacing-sm);
+}
+
+.proposal-ai-writer-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    overflow-y: auto;
+    padding: var(--spacing-md);
+    background-color: rgba(0,0,0,0.1);
+    border-radius: var(--border-radius-md);
+}
+
+.theme-light .proposal-ai-writer-panel {
+     background-color: rgba(0,0,0,0.03);
+}
+
+@media(max-width: 900px) {
+    .proposal-detail-modal-body {
+        grid-template-columns: 1fr;
+    }
 }

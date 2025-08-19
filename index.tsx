@@ -341,6 +341,14 @@ const financialCategoryColors: Record<FinancialCategory, string> = { 'Fizetés':
 const getCategoryColor = (category: FinancialCategory) => financialCategoryColors[category] || '#bdc3c7';
 
 // --- GLOBAL COMPONENTS ---
+const SkeletonLoader = ({ lines = 3, className = '' }) => (
+    <div className={`skeleton-loader ${className}`}>
+        {Array.from({ length: lines }).map((_, i) => (
+            <div key={i} className="skeleton-line" style={{ width: `${80 + Math.random() * 15}%` }}></div>
+        ))}
+    </div>
+);
+
 const NotificationToast = ({ message, type, onDismiss }) => (
     <div className={`notification-toast ${type}`} onClick={onDismiss}>
         <span className="material-symbols-outlined">{type === 'success' ? 'check_circle' : 'error'}</span>
@@ -371,7 +379,7 @@ const DailyBriefingWidget = ({ tasks, events, emails, proposals, ai }: { tasks: 
         try { const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt }); const summaryText = response.text; setSummary(summaryText); } catch (err) { console.error("Briefing generation error:", err); setError("Hiba történt az összefoglaló generálása közben."); } finally { setIsLoading(false); }
     }, [tasks, events, emails, proposals, ai]);
     useEffect(() => { generateBriefing(); }, [generateBriefing]);
-    return ( <div className="card dashboard-widget daily-briefing-widget"> <div className="daily-briefing-header"> <h3><span className="material-symbols-outlined">tips_and_updates</span>Napi Összefoglaló</h3> <button onClick={generateBriefing} disabled={isLoading} className="button button-icon-only" aria-label="Összefoglaló frissítése"> <span className={`material-symbols-outlined ${isLoading ? 'progress_activity' : ''}`}>{isLoading ? 'progress_activity' : 'refresh'}</span> </button> </div> <div className="widget-content"> {isLoading && <div className="widget-placeholder"><span className="material-symbols-outlined progress_activity">progress_activity</span><p>Összefoglaló generálása...</p></div>} {error && <div className="error-message">{error}</div>} {!isLoading && !error && summary && <div className="briefing-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown></div>} </div> </div> );
+    return ( <div className="card dashboard-widget daily-briefing-widget"> <div className="daily-briefing-header"> <h3><span className="material-symbols-outlined">tips_and_updates</span>Napi Összefoglaló</h3> <button onClick={generateBriefing} disabled={isLoading} className="button button-icon-only" aria-label="Összefoglaló frissítése"> <span className={`material-symbols-outlined ${isLoading ? 'progress_activity' : ''}`}>{isLoading ? 'progress_activity' : 'refresh'}</span> </button> </div> <div className="widget-content"> {isLoading && <SkeletonLoader lines={4} />} {error && <div className="error-message">{error}</div>} {!isLoading && !error && summary && <div className="briefing-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown></div>} </div> </div> );
 };
 
 const UpcomingTasksWidget = ({ tasks }: { tasks: TaskItem[] }) => {
@@ -381,12 +389,12 @@ const UpcomingTasksWidget = ({ tasks }: { tasks: TaskItem[] }) => {
         if (timeA === timeB) return 0;
         return timeA < timeB ? -1 : 1;
     }).slice(0, 4);
-    return ( <div className="card dashboard-widget"> <h3><span className="material-symbols-outlined">list_alt</span>Közelgő Feladatok</h3> <ul className="widget-list"> {upcoming.map(task => ( <li key={task.id} className="widget-list-item"> <div className="task-item-info"> <span className="task-item-title">{task.title}</span> <span className="task-item-due-date">{formatDate(task.dueDate)}</span> </div> <span className={`priority-pill ${getPriorityClass(task.priority)}`}>{task.priority}</span> </li> ))} </ul> </div> );
+    return ( <div className="card dashboard-widget"> <h3><span className="material-symbols-outlined">list_alt</span>Közelgő Feladatok</h3> <div className="widget-content"> {upcoming.length > 0 ? ( <ul className="widget-list"> {upcoming.map(task => ( <li key={task.id} className="widget-list-item"> <div className="task-item-info"> <span className="task-item-title">{task.title}</span> <span className="task-item-due-date">{formatDate(task.dueDate)}</span> </div> <span className={`priority-pill ${getPriorityClass(task.priority)}`}>{task.priority}</span> </li> ))} </ul> ) : ( <div className="empty-state-placeholder" style={{minHeight: '100px', padding: 0, border: 'none', background: 'transparent'}}> <span className="material-symbols-outlined">task_alt</span> <p>Nincsenek közelgő feladataid. Szép munka!</p> </div> )} </div> </div> );
 };
 
 const ImportantEmailsWidget = ({ emails }: { emails: EmailMessage[] }) => {
     const importantEmails = emails.filter(e => !e.read || e.important).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 4);
-    return ( <div className="card dashboard-widget"> <h3><span className="material-symbols-outlined">mark_email_unread</span>Fontos Emailek</h3> <ul className="widget-list"> {importantEmails.map(email => ( <li key={email.id} className="widget-list-item"> <div className="email-item-info"> <span className="sender">{email.sender}</span> <span className="subject" title={email.subject}>{email.subject}</span> </div> {!email.read && <div className="unread-dot"></div>} </li> ))} </ul> </div> );
+    return ( <div className="card dashboard-widget"> <h3><span className="material-symbols-outlined">mark_email_unread</span>Fontos Emailek</h3> <div className="widget-content"> {importantEmails.length > 0 ? ( <ul className="widget-list"> {importantEmails.map(email => ( <li key={email.id} className="widget-list-item"> <div className="email-item-info"> <span className="sender">{email.sender}</span> <span className="subject" title={email.subject}>{email.subject}</span> </div> {!email.read && <div className="unread-dot"></div>} </li> ))} </ul> ) : ( <div className="empty-state-placeholder" style={{minHeight: '100px', padding: 0, border: 'none', background: 'transparent'}}> <span className="material-symbols-outlined">drafts</span> <p>A postaládád naprakész.</p> </div> )} </div> </div> );
 };
 
 // --- VIEW COMPONENTS ---
@@ -411,7 +419,7 @@ const DashboardView = ({ tasks, events, emails, proposals, ai, onOpenTaskModal, 
                 <DailyBriefingWidget tasks={tasks} events={events} emails={emails} proposals={proposals} ai={ai} />
                 <UpcomingTasksWidget tasks={tasks} />
                 <ImportantEmailsWidget emails={emails} />
-                <div className="card dashboard-widget"> <h3><span className="material-symbols-outlined">calendar_today</span>Heti Terv</h3> <div className="widget-placeholder">A naptár integráció hamarosan érkezik.</div> </div>
+                <div className="card dashboard-widget"> <h3><span className="material-symbols-outlined">calendar_today</span>Heti Terv</h3> <div className="empty-state-placeholder" style={{border: 'none', background: 'transparent'}}><span className="material-symbols-outlined">calendar_month</span><p>A részletes heti naptárnézet hamarosan érkezik.</p></div> </div>
             </div>
         </div>
     </View>
@@ -727,7 +735,7 @@ const DayDetailModal = ({ isOpen, onClose, date, events, onOpenEventModal }) => 
                             ))}
                         </ul>
                     ) : (
-                        <div className="widget-placeholder" style={{ background: 'transparent' }}>
+                        <div className="empty-state-placeholder" style={{ background: 'transparent' }}>
                              <span className="material-symbols-outlined">event_busy</span>
                             <p>Erre a napra nincsenek események.</p>
                         </div>
@@ -1029,7 +1037,7 @@ const AiProjectModal = ({ isOpen, onClose, onAddProjectWithTasks, ai, onAddNotif
             case 'loading':
                 return (
                     <div className="ai-project-modal-step">
-                        <div className="widget-placeholder" style={{ background: 'transparent' }}>
+                        <div className="empty-state-placeholder" style={{ background: 'transparent', border: 'none' }}>
                             <span className="material-symbols-outlined progress_activity">progress_activity</span>
                             <p>Projektterv készítése...</p>
                             <span>Ez eltarthat pár másodpercig.</span>
@@ -1757,7 +1765,7 @@ const AiCreativeView = ({ ai, onSaveToDocs, onAddNotification }) => {
                         <h3>Eredmények</h3>
                     </div>
                     {isLoading && (
-                         <div className="widget-placeholder" style={{ background: 'transparent' }}>
+                         <div className="empty-state-placeholder" style={{ background: 'transparent', border: 'none' }}>
                             <span className="material-symbols-outlined progress_activity">progress_activity</span>
                             <p>Képek készítése...</p>
                         </div>
@@ -1775,7 +1783,7 @@ const AiCreativeView = ({ ai, onSaveToDocs, onAddNotification }) => {
                         </div>
                     )}
                      {!isLoading && results.length === 0 && !error && (
-                        <div className="widget-placeholder">
+                        <div className="empty-state-placeholder">
                            <span className="material-symbols-outlined">image_search</span>
                            <p>A generált képek itt fognak megjelenni.</p>
                         </div>
@@ -1966,7 +1974,7 @@ const ContactsView = ({ contacts, projects, proposals, emails, onOpenContactModa
                             <AiContactAssistant contact={selectedContact} relatedItems={relatedItems} ai={ai} onAddNotification={onAddNotification} />
                         </>
                     ) : (
-                        <div className="empty-pane-placeholder">
+                        <div className="empty-state-placeholder">
                              <span className="material-symbols-outlined">person_search</span>
                             <p>Válasszon ki egy kapcsolatot a részletek megtekintéséhez.</p>
                         </div>
@@ -2100,7 +2108,7 @@ const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNoti
                 </div>
 
                 <div className="search-results-container">
-                    {isLoading && !results?.web && <div className="widget-placeholder"><span className="material-symbols-outlined progress_activity"></span><p>Keresés az interneten...</p></div>}
+                    {isLoading && !results?.web && <div className="empty-state-placeholder" style={{border: 'none'}}><span className="material-symbols-outlined progress_activity"></span><p>Keresés az interneten...</p></div>}
                     
                     {results?.web && (
                         <div className="search-result-group web-results">
@@ -2149,7 +2157,7 @@ const GlobalSearchModal = ({ isOpen, onClose, ai, allData, onNavigate, onAddNoti
                     })}
 
                     {!isLoading && !results && searchTerm && (
-                         <div className="widget-placeholder">
+                         <div className="empty-state-placeholder" style={{border: 'none'}}>
                             <p>Nincs találat a "{searchTerm}" kifejezésre.</p>
                         </div>
                     )}
@@ -2505,7 +2513,7 @@ const App = () => {
             case 'planner': return <PlannerView events={plannerEvents} onOpenEventModal={handleOpenEventModal} onOpenDayModal={handleOpenDayModal} />;
             case 'email': return <EmailView emails={emails} ai={ai} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} onOpenEmailCompose={handleOpenEmailComposeModal} />;
             case 'projects': return <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} onProjectClick={handleOpenProjectDetail} />;
-            case 'proposals': return <ProposalsView proposals={proposals} setProposals={setProposals} tasks={tasks} onOpenProposalModal={() => setProposalModalOpen(true)} onProposalClick={handleOpenProposalDetail} onAddNotification={handleAddNotification} />;
+            case 'proposals': return <ProposalsView proposals={proposals} setProposals={setProposals} onOpenProposalModal={() => setProposalModalOpen(true)} onProposalClick={handleOpenProposalDetail} onAddNotification={handleAddNotification} />;
             case 'finances': return <FinancesView transactions={transactions} ai={ai} onOpenTransactionModal={() => setTransactionModalOpen(true)} />;
             case 'docs': return <DocsView docs={docs} onImageClick={(src) => { setImageModalSrc(src); setImageModalOpen(true); }} onOpenEditor={handleOpenDocEditor} onDeleteDoc={handleDeleteDoc} />;
             case 'training': return <TrainingView trainings={trainings} onOpenTrainingModal={handleOpenTrainingModal} onSaveTraining={handleSaveTraining} ai={ai} onAddNotification={handleAddNotification} />;
@@ -2682,11 +2690,11 @@ const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMo
                 const isOpen = openSections.includes(item.id);
                 return (
                     <li key={item.id} className="nav-item">
-                        <a onClick={() => handleToggleSection(item.id)} className={`nav-link nav-section-header ${isOpen ? 'open' : ''}`} title={isCollapsed ? item.label : undefined}>
+                        <button onClick={() => handleToggleSection(item.id)} className={`nav-link nav-section-header ${isOpen ? 'open' : ''}`} title={isCollapsed ? item.label : undefined}>
                             <span className="material-symbols-outlined">{item.icon}</span>
                             <span>{item.label}</span>
                             <span className="material-symbols-outlined chevron">chevron_right</span>
-                        </a>
+                        </button>
                         <ul className={`nav-sub-list ${isOpen ? 'open' : ''}`}>
                             {renderNavItems(item.subItems)}
                         </ul>
@@ -2906,7 +2914,7 @@ const EmailView = ({ emails, ai, onAddTask, onAddNotification, onOpenEmailCompos
                             </div>
                         </>
                     ) : (
-                        <div className="empty-pane-placeholder">
+                        <div className="empty-state-placeholder">
                             <span className="material-symbols-outlined">mark_email_read</span>
                             <p>Válasszon ki egy emailt a megtekintéshez.</p>
                         </div>
@@ -3455,7 +3463,7 @@ const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
     const expensesByCategory = useMemo(() => {
         const byCategory = transactions
             .filter(t => t.type === 'expense')
-            .reduce((acc, t) => {
+            .reduce((acc: Record<FinancialCategory, number>, t) => {
                 acc[t.category] = (acc[t.category] || 0) + t.amount;
                 return acc;
             }, {} as Record<FinancialCategory, number>);
@@ -3527,7 +3535,7 @@ const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
                                         <div className="bar-fill" style={{ width: `${item.percentage}%`, backgroundColor: getCategoryColor(item.category) }}></div>
                                     </div>
                                 </div>
-                            )) : <div className="widget-placeholder" style={{ background: 'transparent' }}><p>Nincsenek kiadások.</p></div>}
+                            )) : <div className="empty-state-placeholder" style={{ background: 'transparent', border: 'none' }}><p>Nincsenek kiadások.</p></div>}
                         </div>
                     </div>
                 </div>
@@ -3567,26 +3575,34 @@ const DocsView = ({ docs, onImageClick, onOpenEditor, onDeleteDoc }) => {
                     {/* Filters and sorting can be added here if needed */}
                 </div>
                 <div className="docs-grid">
-                    {filteredAndSortedDocs.map(doc => (
-                        <div key={doc.id} className="doc-card card">
-                            <div className="doc-card-header">
-                                <span className="material-symbols-outlined doc-type-icon">{getIconForType(doc.type)}</span>
-                                <h4 className="doc-title">{doc.title}</h4>
-                            </div>
-                            <div className="doc-card-content" onClick={() => doc.type === 'image' ? onImageClick(doc.content) : doc.type === 'note' ? onOpenEditor(doc) : window.open(doc.content, '_blank')}>
-                                {doc.type === 'image' && <img src={`data:image/png;base64,${doc.content}`} alt={doc.title} className="doc-image-preview" />}
-                                {doc.type === 'link' && <a href={doc.content} target="_blank" rel="noopener noreferrer" className="doc-link-preview">{doc.content}</a>}
-                                {doc.type === 'note' && <p className="doc-note-preview">{doc.content.substring(0, 150)}{doc.content.length > 150 ? '...' : ''}</p>}
-                            </div>
-                            <div className="doc-card-footer">
-                                <span className="doc-date">Létrehozva: {formatDate(doc.createdAt)}</span>
-                                <div className="doc-actions">
-                                    {doc.type === 'note' && <button className="button button-icon-only" onClick={() => onOpenEditor(doc)}><span className="material-symbols-outlined">edit</span></button>}
-                                    <button className="button button-icon-only button-danger" onClick={() => onDeleteDoc(doc.id)}><span className="material-symbols-outlined">delete</span></button>
+                    {filteredAndSortedDocs.length > 0 ? (
+                        filteredAndSortedDocs.map(doc => (
+                            <div key={doc.id} className="doc-card card">
+                                <div className="doc-card-header">
+                                    <span className="material-symbols-outlined doc-type-icon">{getIconForType(doc.type)}</span>
+                                    <h4 className="doc-title">{doc.title}</h4>
+                                </div>
+                                <div className="doc-card-content" onClick={() => doc.type === 'image' ? onImageClick(doc.content) : doc.type === 'note' ? onOpenEditor(doc) : window.open(doc.content, '_blank')}>
+                                    {doc.type === 'image' && <img src={`data:image/png;base64,${doc.content}`} alt={doc.title} className="doc-image-preview" />}
+                                    {doc.type === 'link' && <a href={doc.content} target="_blank" rel="noopener noreferrer" className="doc-link-preview">{doc.content}</a>}
+                                    {doc.type === 'note' && <p className="doc-note-preview">{doc.content.substring(0, 150)}{doc.content.length > 150 ? '...' : ''}</p>}
+                                </div>
+                                <div className="doc-card-footer">
+                                    <span className="doc-date">Létrehozva: {formatDate(doc.createdAt)}</span>
+                                    <div className="doc-actions">
+                                        {doc.type === 'note' && <button className="button button-icon-only" onClick={() => onOpenEditor(doc)}><span className="material-symbols-outlined">edit</span></button>}
+                                        <button className="button button-icon-only button-danger" onClick={() => onDeleteDoc(doc.id)}><span className="material-symbols-outlined">delete</span></button>
+                                    </div>
                                 </div>
                             </div>
+                        ))
+                    ) : (
+                        <div className="empty-state-placeholder" style={{gridColumn: '1 / -1'}}>
+                            <span className="material-symbols-outlined">folder_off</span>
+                            <p>Nincsenek dokumentumok.</p>
+                            <span>Kezdje egy új jegyzet létrehozásával!</span>
                         </div>
-                    ))}
+                    )}
                 </div>
             </div>
         </View>
@@ -3643,9 +3659,9 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
         };
 
         const financialSummary = {
-            totalIncome: transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0),
-            totalExpense: transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0),
-            balance: transactions.reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0),
+            totalIncome: transactions.filter(t => t.type === 'income').reduce((sum: number, t) => sum + t.amount, 0),
+            totalExpense: transactions.filter(t => t.type === 'expense').reduce((sum: number, t) => sum + t.amount, 0),
+            balance: transactions.reduce((sum: number, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0),
         };
         
         const projectSummary = projects.map(p => {
@@ -3697,14 +3713,7 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
                         </button>
                     </div>
                      <div className="report-content">
-                        {isLoading ? (
-                            <div className="widget-placeholder">
-                                <span className="material-symbols-outlined progress_activity">progress_activity</span>
-                                <p>Riport generálása...</p>
-                            </div>
-                        ) : (
-                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
-                        )}
+                        {isLoading ? <SkeletonLoader lines={8} /> : <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>}
                     </div>
                 </div>
             </div>
