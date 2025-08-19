@@ -276,10 +276,46 @@ const mockTransactions: Transaction[] = [
 
 const navigationData: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { id: 'reports', label: 'Riportok', icon: 'bar_chart' },
-    { id: 'personal', label: 'Saját Ügyek', icon: 'person', subItems: [ { id: 'planner', label: 'Naptár', icon: 'calendar_month' }, { id: 'tasks', label: 'Feladatok', icon: 'task_alt' }, { id: 'finances', label: 'Pénzügyek', icon: 'account_balance_wallet' }, { id: 'docs', label: 'Dokumentumok', icon: 'folder' }, ], },
-    { id: 'work', label: 'Munka', icon: 'work', subItems: [ { id: 'email', label: 'Email', icon: 'mail' }, { id: 'projects', label: 'Projektek', icon: 'schema' }, { id: 'proposals', label: 'Pályázatok', icon: 'description' }, { id: 'contacts', label: 'Kapcsolatok', icon: 'contacts' }, { id: 'training', label: 'Képzések', icon: 'school' }, ], },
-    { id: 'ai', label: 'Gemini Asszisztens', icon: 'smart_toy', subItems: [ { id: 'ai-chat', label: 'Általános Chat', icon: 'chat' }, { id: 'ai-creative', label: 'Kreatív Eszközök', icon: 'brush' }, ], },
+    { 
+        id: 'workspace', 
+        label: 'Munkaterület', 
+        icon: 'workspaces', 
+        subItems: [
+            { id: 'planner', label: 'Naptár', icon: 'calendar_month' },
+            { id: 'tasks', label: 'Feladatok', icon: 'task_alt' },
+            { id: 'projects', label: 'Projektek', icon: 'schema' },
+            { id: 'proposals', label: 'Pályázatok', icon: 'description' },
+        ]
+    },
+    {
+        id: 'knowledge',
+        label: 'Tudás & Kapcsolatok',
+        icon: 'hub',
+        subItems: [
+            { id: 'email', label: 'Email', icon: 'mail' },
+            { id: 'contacts', label: 'Kapcsolatok', icon: 'contacts' },
+            { id: 'docs', label: 'Dokumentumok', icon: 'folder' },
+        ]
+    },
+    {
+        id: 'growth',
+        label: 'Fejlődés & Elemzés',
+        icon: 'monitoring',
+        subItems: [
+            { id: 'training', label: 'Képzések', icon: 'school' },
+            { id: 'finances', label: 'Pénzügyek', icon: 'account_balance_wallet' },
+            { id: 'reports', label: 'Riportok', icon: 'bar_chart' },
+        ]
+    },
+    { 
+        id: 'ai', 
+        label: 'Gemini Asszisztens', 
+        icon: 'smart_toy', 
+        subItems: [
+            { id: 'ai-chat', label: 'Általános Chat', icon: 'chat' },
+            { id: 'ai-creative', label: 'Kreatív Eszközök', icon: 'brush' },
+        ] 
+    },
     { id: 'settings', label: 'Beállítások', icon: 'settings' },
 ];
 
@@ -2634,7 +2670,7 @@ const App = () => {
 
 
 const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMobile, onCloseMobileNav }) => {
-    const [openSections, setOpenSections] = useState(['personal', 'work', 'ai']);
+    const [openSections, setOpenSections] = useState(['workspace', 'knowledge', 'growth', 'ai']);
 
     const handleToggleSection = (sectionId) => {
         setOpenSections(prev => prev.includes(sectionId) ? prev.filter(id => id !== sectionId) : [...prev, sectionId]);
@@ -4070,9 +4106,9 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
         const startDate = new Date(now);
         if (timeRange === 'weekly') {
             // Monday as start of week
-            const day = startDate.getDay(); // 0=Sun, 1=Mon, etc.
-            const diff = startDate.getDate() - day + (day === 0 ? -6 : 1);
-            startDate.setDate(diff);
+            const dayOfWeek = startDate.getDay(); // 0 is Sunday, 1 is Monday, ...
+            const distanceToMonday = (dayOfWeek + 6) % 7;
+            startDate.setDate(startDate.getDate() - distanceToMonday);
             startDate.setHours(0, 0, 0, 0);
         } else { // monthly
             startDate.setDate(1);
@@ -4182,48 +4218,4 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
                                 <div className="bar-chart">
                                     {weeklyTasksData.map(data => (
                                         <div key={data.day} className="bar-chart-item">
-                                            <div className="bar" style={{ height: `${(data.completed / maxWeeklyTasks) * 100}%` }} title={`${data.completed} feladat`}></div>
-                                            <span className="bar-label">{data.day}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="card report-widget">
-                         <h3>Pénzügyi Mozgások</h3>
-                          <div className="report-content" style={{gap: 'var(--spacing-xl)'}}>
-                            <div className="report-metrics">
-                                <strong style={{color: 'var(--color-accent)'}}>+{financialSummary.income.toLocaleString()} Ft</strong>
-                                <span>Bevétel</span>
-                            </div>
-                            <div className="report-metrics">
-                                <strong style={{color: 'var(--color-destructive)'}}>-{financialSummary.expense.toLocaleString()} Ft</strong>
-                                <span>Kiadás</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                     <div className="card report-widget">
-                         <h3>Projektek Állapota</h3>
-                          <div className="report-content" style={{gap: 'var(--spacing-xl)'}}>
-                            <div className="report-metrics">
-                                <strong>{projectSummary.active}</strong>
-                                <span>Aktív</span>
-                            </div>
-                            <div className="report-metrics">
-                                <strong>{projectSummary.completed}</strong>
-                                <span>Befejezett</span>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-        </View>
-    );
-};
-
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-root.render(<App />);
+                                            <div className="bar
