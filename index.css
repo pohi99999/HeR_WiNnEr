@@ -267,13 +267,145 @@ a:hover { color: var(--color-primary-light); }
 .sidebar-collapsed .nav-section-header .chevron { display: none; }
 .sidebar-collapsed .nav-sub-list { display: none; }
 
-/* Mobile Sidebar */
+/* Mobile Sidebar & Responsive Layouts */
 @media (max-width: 1024px) {
     .sidebar { position: fixed; transform: translateX(-100%); z-index: 1001; height: 100%; box-shadow: var(--shadow-lg); }
     .app-layout.mobile-nav-open .sidebar { transform: translateX(0); }
     .app-layout.mobile-nav-open .mobile-nav-overlay { display: block; }
     .sidebar-header .collapse-toggle .material-symbols-outlined { font-size: 20px; }
+
+    /* Layout adjustments for tablets */
+    .main-content {
+        padding: var(--spacing-md);
+    }
+    .global-header {
+        padding: 0 var(--spacing-md);
+    }
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    .view-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-md);
+    }
+
+    /* Stack two-pane layouts */
+    .contacts-view-layout, .email-view-layout {
+        flex-direction: column;
+        height: auto;
+    }
+    .contact-list-pane, .email-sidebar, .email-list-pane {
+        width: 100%;
+        flex-shrink: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--color-border);
+        max-height: 40vh; /* Allow more space for lists on tablets */
+        overflow-y: auto;
+    }
+     .contact-detail-pane, .email-content-pane {
+        flex-grow: 1;
+        min-height: 50vh;
+    }
+    
+    .tasks-toolbar {
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+    }
+    .filter-group {
+        flex-grow: 1;
+        min-width: 200px;
+    }
 }
+
+/* Mobile Devices */
+@media (max-width: 768px) {
+    h2 { font-size: 1.5rem; }
+    h3 { font-size: 1.15rem; }
+
+    .global-header .search-button span, .global-header .search-button kbd {
+        display: none;
+    }
+    .global-header .search-button {
+        padding: 0 var(--spacing-sm);
+        gap: 0;
+        min-width: 44px;
+        justify-content: center;
+    }
+    
+    .user-profile span {
+        display: none;
+    }
+
+    .quick-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-sm);
+    }
+    .quick-actions .button {
+        flex-grow: 1;
+        font-size: 0.9rem;
+    }
+
+    /* Make Kanban boards scrollable */
+    .tasks-kanban-board-container, .projects-view-container {
+        margin: 0 calc(-1 * var(--spacing-md)); /* Use negative margin to get edge-to-edge scroll */
+        padding: 0 var(--spacing-md);
+        overflow-x: auto;
+    }
+    .kanban-board {
+        display: flex;
+        gap: var(--spacing-md);
+        padding-bottom: var(--spacing-md);
+    }
+    .kanban-column {
+        width: 280px;
+        flex-shrink: 0;
+    }
+    
+    .form-group-inline {
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+    
+    .modal-content {
+        width: 95%;
+        max-width: none;
+        height: 90vh;
+        display: flex;
+        flex-direction: column;
+    }
+    .modal-form {
+        overflow-y: auto;
+        flex-grow: 1;
+    }
+
+    .creative-view-container {
+        flex-direction: column;
+    }
+    
+    .ai-contact-assistant {
+        width: 100%;
+    }
+    
+    .contact-main-info, .contact-detail-pane {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+    .contacts-view-layout.card {
+        padding: 0;
+    }
+    
+    .contact-list-pane {
+        padding: var(--spacing-sm);
+        max-height: 30vh; /* A bit smaller on phones */
+    }
+    .contact-detail-pane {
+        padding: var(--spacing-md);
+    }
+}
+
 
 /* Sidebar Nav */
 .nav-list {
@@ -285,37 +417,5 @@ a:hover { color: var(--color-primary-light); }
 }
 
 .nav-item {
-    /* mar--- END OF FILE index.html ---
-
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.1.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.7.0",
-    "react/": "https://esm.sh/react@^19.1.0/",
-    "@monaco-editor/react": "https://esm.sh/@monaco-editor/react@^4.6.0",
-    "react-markdown": "https://esm.sh/react-markdown@^9.0.1",
-    "remark-gfm": "https://esm.sh/remark-gfm@^4.0.0",
-    "react-dnd": "https://esm.sh/react-dnd@16.0.1",
-    "react-dnd-html5-backend": "https://esm.sh/react-dnd-html5-backend@16.0.1"
-  }
+    
 }
-</script>
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>P-Day Light</title>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300,0,0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="index.css">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="index.tsx"></script>
-  </body>
-</html>
