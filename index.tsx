@@ -397,6 +397,52 @@ const ImportantEmailsWidget = ({ emails }: { emails: EmailMessage[] }) => {
     return ( <div className="card dashboard-widget"> <h3><span className="material-symbols-outlined">mark_email_unread</span>Fontos Emailek</h3> <div className="widget-content"> {importantEmails.length > 0 ? ( <ul className="widget-list"> {importantEmails.map(email => ( <li key={email.id} className="widget-list-item"> <div className="email-item-info"> <span className="sender">{email.sender}</span> <span className="subject" title={email.subject}>{email.subject}</span> </div> {!email.read && <div className="unread-dot"></div>} </li> ))} </ul> ) : ( <div className="empty-state-placeholder" style={{minHeight: '100px', padding: 0, border: 'none', background: 'transparent'}}> <span className="material-symbols-outlined">drafts</span> <p>A postaládád naprakész.</p> </div> )} </div> </div> );
 };
 
+const ProjectsOverviewWidget = ({ projects, tasks }: { projects: Project[], tasks: TaskItem[] }) => {
+    const getProjectProgress = (projectId: string) => {
+        const relatedTasks = tasks.filter(t => t.projectId === projectId);
+        if (relatedTasks.length === 0) return 0;
+        const completedTasks = relatedTasks.filter(t => t.status === 'Kész').length;
+        return (completedTasks / relatedTasks.length) * 100;
+    };
+
+    const ongoingProjects = projects.filter(p => p.status !== 'Kész').slice(0, 4);
+
+    return (
+        <div className="card dashboard-widget">
+            <h3><span className="material-symbols-outlined">schema</span>Projektek Áttekintése</h3>
+            <div className="widget-content">
+                {ongoingProjects.length > 0 ? (
+                    <ul className="widget-list projects-overview-list">
+                        {ongoingProjects.map(project => {
+                            const progress = getProjectProgress(project.id);
+                            return (
+                                <li key={project.id} className="widget-list-item">
+                                    <div className="project-overview-info">
+                                        <span className="project-title">{project.title}</span>
+                                        <div className="project-card-footer" style={{padding: 0, marginTop: 'var(--spacing-xs)'}}>
+                                            <span>Haladás</span>
+                                            <span>{Math.round(progress)}%</span>
+                                        </div>
+                                        <div className="progress-bar-container">
+                                            <div className="progress-bar-fill" style={{ width: `${progress}%` }}></div>
+                                        </div>
+                                    </div>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                ) : (
+                     <div className="empty-state-placeholder" style={{minHeight: '100px', padding: 0, border: 'none', background: 'transparent'}}>
+                         <span className="material-symbols-outlined">celebration</span>
+                         <p>Minden projekt befejeződött!</p>
+                     </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+
 // --- VIEW COMPONENTS ---
 const View = ({ title, subtitle, children, actions }: { title: any; subtitle: any; children?: React.ReactNode; actions?: React.ReactNode }) => (
     <div className="view-container">
@@ -411,7 +457,7 @@ const View = ({ title, subtitle, children, actions }: { title: any; subtitle: an
     </div>
 );
 
-const DashboardView = ({ tasks, events, emails, proposals, ai, onOpenTaskModal, onOpenEventModal, onOpenEmailComposeModal }: { tasks: TaskItem[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI, onOpenTaskModal: () => void, onOpenEventModal: () => void, onOpenEmailComposeModal: () => void }) => (
+const DashboardView = ({ tasks, projects, events, emails, proposals, ai, onOpenTaskModal, onOpenEventModal, onOpenEmailComposeModal }: { tasks: TaskItem[], projects: Project[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI, onOpenTaskModal: () => void, onOpenEventModal: () => void, onOpenEmailComposeModal: () => void }) => (
     <View title="Dashboard" subtitle="Üdvözöljük a P-Day Light alkalmazásban!">
         <div className="dashboard-layout">
             <QuickActions onOpenTaskModal={onOpenTaskModal} onOpenEventModal={onOpenEventModal} onOpenEmailComposeModal={onOpenEmailComposeModal}/>
@@ -419,7 +465,7 @@ const DashboardView = ({ tasks, events, emails, proposals, ai, onOpenTaskModal, 
                 <DailyBriefingWidget tasks={tasks} events={events} emails={emails} proposals={proposals} ai={ai} />
                 <UpcomingTasksWidget tasks={tasks} />
                 <ImportantEmailsWidget emails={emails} />
-                <div className="card dashboard-widget"> <h3><span className="material-symbols-outlined">calendar_today</span>Heti Terv</h3> <div className="empty-state-placeholder" style={{border: 'none', background: 'transparent'}}><span className="material-symbols-outlined">calendar_month</span><p>A részletes heti naptárnézet hamarosan érkezik.</p></div> </div>
+                <ProjectsOverviewWidget projects={projects} tasks={tasks} />
             </div>
         </div>
     </View>
@@ -1987,6 +2033,19 @@ const ContactsView = ({ contacts, projects, proposals, emails, onOpenContactModa
 
 
 const GlobalHeader = ({ onToggleNav, onOpenSearch }) => {
+    const [isDropdownOpen, setDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [dropdownRef]);
+    
     return (
         <header className="global-header">
             <button className="mobile-nav-toggle" onClick={onToggleNav}>
@@ -1998,9 +2057,22 @@ const GlobalHeader = ({ onToggleNav, onOpenSearch }) => {
                     <span>Keresés</span>
                     <kbd>Ctrl+K</kbd>
                 </button>
-                <div className="user-profile">
-                    <span>Üdv, Felhasználó</span>
-                    <div className="avatar-sm">F</div>
+                <div className="user-profile" ref={dropdownRef}>
+                    <button className="user-profile-button" onClick={() => setDropdownOpen(!isDropdownOpen)}>
+                       <span>Üdv, Felhasználó</span>
+                       <div className="avatar-sm">F</div>
+                       <span className={`material-symbols-outlined chevron ${isDropdownOpen ? 'open' : ''}`}>expand_more</span>
+                   </button>
+                    {isDropdownOpen && (
+                        <div className="profile-dropdown card">
+                            <ul>
+                                <li><a href="#"><span className="material-symbols-outlined">account_circle</span>Profil</a></li>
+                                <li><a href="#"><span className="material-symbols-outlined">settings</span>Beállítások</a></li>
+                                <li className="separator"></li>
+                                <li><a href="#"><span className="material-symbols-outlined">logout</span>Kijelentkezés</a></li>
+                            </ul>
+                        </div>
+                    )}
                 </div>
             </div>
         </header>
@@ -2507,23 +2579,25 @@ const App = () => {
     const allData = { tasks, projects, docs, proposals, emails: emails, trainings, transactions, contacts };
 
     const renderView = () => {
+        let viewComponent;
         switch (activeView.id) {
-            case 'dashboard': return <DashboardView tasks={tasks} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
-            case 'tasks': return <TasksView tasks={tasks} emails={emails} projects={projects} proposals={proposals} trainings={trainings} setTasks={setTasks} onOpenTaskModal={handleOpenTaskModal} onAddNotification={handleAddNotification} />;
-            case 'planner': return <PlannerView events={plannerEvents} onOpenEventModal={handleOpenEventModal} onOpenDayModal={handleOpenDayModal} />;
-            case 'email': return <EmailView emails={emails} ai={ai} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} onOpenEmailCompose={handleOpenEmailComposeModal} />;
-            case 'projects': return <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} onProjectClick={handleOpenProjectDetail} />;
-            case 'proposals': return <ProposalsView proposals={proposals} setProposals={setProposals} onOpenProposalModal={() => setProposalModalOpen(true)} onProposalClick={handleOpenProposalDetail} onAddNotification={handleAddNotification} />;
-            case 'finances': return <FinancesView transactions={transactions} ai={ai} onOpenTransactionModal={() => setTransactionModalOpen(true)} />;
-            case 'docs': return <DocsView docs={docs} onImageClick={(src) => { setImageModalSrc(src); setImageModalOpen(true); }} onOpenEditor={handleOpenDocEditor} onDeleteDoc={handleDeleteDoc} />;
-            case 'training': return <TrainingView trainings={trainings} onOpenTrainingModal={handleOpenTrainingModal} onSaveTraining={handleSaveTraining} ai={ai} onAddNotification={handleAddNotification} />;
-            case 'contacts': return <ContactsView contacts={contacts} projects={projects} proposals={proposals} emails={emails} onOpenContactModal={handleOpenContactModal} ai={ai} onAddNotification={handleAddNotification} />;
-            case 'reports': return <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />;
-            case 'ai-chat': return <AiChatView ai={ai} tasks={tasks} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />;
-            case 'ai-creative': return <AiCreativeView ai={ai} onSaveToDocs={handleSaveImageToDocs} onAddNotification={handleAddNotification} />;
-            case 'settings': return <SettingsView theme={theme} setTheme={setTheme} onAddNotification={handleAddNotification}/>
-            default: return <DashboardView tasks={tasks} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
+            case 'dashboard': viewComponent = <DashboardView tasks={tasks} projects={projects} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />; break;
+            case 'tasks': viewComponent = <TasksView tasks={tasks} emails={emails} projects={projects} proposals={proposals} trainings={trainings} setTasks={setTasks} onOpenTaskModal={handleOpenTaskModal} onAddNotification={handleAddNotification} />; break;
+            case 'planner': viewComponent = <PlannerView events={plannerEvents} onOpenEventModal={handleOpenEventModal} onOpenDayModal={handleOpenDayModal} />; break;
+            case 'email': viewComponent = <EmailView emails={emails} ai={ai} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} onOpenEmailCompose={handleOpenEmailComposeModal} />; break;
+            case 'projects': viewComponent = <ProjectsView projects={projects} tasks={tasks} ai={ai} onAddNotification={handleAddNotification} onOpenProjectModal={() => setProjectModalOpen(true)} onOpenAiProjectModal={() => setAiProjectModalOpen(true)} onProjectClick={handleOpenProjectDetail} />; break;
+            case 'proposals': viewComponent = <ProposalsView proposals={proposals} setProposals={setProposals} onOpenProposalModal={() => setProposalModalOpen(true)} onProposalClick={handleOpenProposalDetail} onAddNotification={handleAddNotification} />; break;
+            case 'finances': viewComponent = <FinancesView transactions={transactions} ai={ai} onOpenTransactionModal={() => setTransactionModalOpen(true)} />; break;
+            case 'docs': viewComponent = <DocsView docs={docs} onImageClick={(src) => { setImageModalSrc(src); setImageModalOpen(true); }} onOpenEditor={handleOpenDocEditor} onDeleteDoc={handleDeleteDoc} />; break;
+            case 'training': viewComponent = <TrainingView trainings={trainings} onOpenTrainingModal={handleOpenTrainingModal} onSaveTraining={handleSaveTraining} ai={ai} onAddNotification={handleAddNotification} />; break;
+            case 'contacts': viewComponent = <ContactsView contacts={contacts} projects={projects} proposals={proposals} emails={emails} onOpenContactModal={handleOpenContactModal} ai={ai} onAddNotification={handleAddNotification} />; break;
+            case 'reports': viewComponent = <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />; break;
+            case 'ai-chat': viewComponent = <AiChatView ai={ai} tasks={tasks} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />; break;
+            case 'ai-creative': viewComponent = <AiCreativeView ai={ai} onSaveToDocs={handleSaveImageToDocs} onAddNotification={handleAddNotification} />; break;
+            case 'settings': viewComponent = <SettingsView theme={theme} setTheme={setTheme} onAddNotification={handleAddNotification}/>; break;
+            default: viewComponent = <DashboardView tasks={tasks} projects={projects} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
         }
+        return React.cloneElement(viewComponent, { key: activeView.id });
     };
 
     if (!ai) {
@@ -2703,10 +2777,10 @@ const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMo
             }
             return (
                 <li key={item.id} className="nav-item">
-                    <a onClick={() => onNavigate(item.id)} className={`nav-link ${activeViewId === item.id ? 'active' : ''}`} title={isCollapsed ? item.label : undefined}>
+                    <button onClick={() => onNavigate(item.id)} className={`nav-link ${activeViewId === item.id ? 'active' : ''}`} title={isCollapsed ? item.label : undefined}>
                         <span className="material-symbols-outlined">{item.icon}</span>
                         <span>{item.label}</span>
-                    </a>
+                    </button>
                 </li>
             );
         });
@@ -2716,15 +2790,32 @@ const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMo
     const toggleIcon = isMobile ? 'arrow_back_ios' : (isCollapsed ? 'arrow_forward_ios' : 'arrow_back_ios');
     const title = (!isMobile && isCollapsed) 
         ? <span className="material-symbols-outlined">api</span> 
-        : <span>P-Day Light</span>;
+        : (
+            <svg width="120" height="24" viewBox="0 0 132 28" fill="none" xmlns="http://www.w3.org/2000/svg" style={{transform: 'translateY(2px)'}}>
+                <path d="M14.72 2.52H9.08V25.48H14.72V16.6H20.48V25.48H26.12V2.52H20.48V11.2H14.72V2.52Z" fill="url(#paint0_linear_1_2)"/>
+                <path d="M47.2266 2.52C42.4866 2.52 38.6666 6.3 38.6666 11.08V16.92C38.6666 21.7 42.4866 25.48 47.2266 25.48C51.9666 25.48 55.7866 21.7 55.7866 16.92V11.08C55.7866 6.3 51.9666 2.52 47.2266 2.52ZM50.1466 16.92C50.1466 20 48.8866 21.28 47.2266 21.28C45.5666 21.28 44.3066 20 44.3066 16.92V11.08C44.3066 8.12 45.5666 6.8 47.2266 6.8C48.8866 6.8 50.1466 8.12 50.1466 11.08V16.92Z" fill="url(#paint1_linear_1_2)"/>
+                <path d="M68.5226 13.92L62.7226 2.52H69.0026L71.8426 7.92L74.6826 2.52H80.9626L75.1626 13.92V25.48H68.5226V13.92Z" fill="url(#paint2_linear_1_2)"/>
+                <path d="M2.8 0H0V28H2.8V0Z" fill="url(#paint3_linear_1_2)"/>
+                <path d="M102.534 2.52H88.7738V7.2H94.1738V25.48H99.8138V7.2H105.214V2.52H102.534Z" fill="url(#paint4_linear_1_2)"/>
+                <path d="M117.828 2.52L108.948 25.48H114.948L116.868 20.32H124.788L126.708 25.48H132.708L123.828 2.52H117.828ZM120.828 7.4L123.708 15.92H117.948L120.828 7.4Z" fill="url(#paint5_linear_1_2)"/>
+                <defs>
+                <linearGradient id="paint0_linear_1_2" x1="17.6" y1="2.52" x2="17.6" y2="25.48" gradientUnits="userSpaceOnUse"><stop stop-color="#00BFFF"/><stop offset="1" stop-color="#50E3C2"/></linearGradient>
+                <linearGradient id="paint1_linear_1_2" x1="47.2266" y1="2.52" x2="47.2266" y2="25.48" gradientUnits="userSpaceOnUse"><stop stop-color="#00BFFF"/><stop offset="1" stop-color="#50E3C2"/></linearGradient>
+                <linearGradient id="paint2_linear_1_2" x1="71.8426" y1="2.52" x2="71.8426" y2="25.48" gradientUnits="userSpaceOnUse"><stop stop-color="#00BFFF"/><stop offset="1" stop-color="#50E3C2"/></linearGradient>
+                <linearGradient id="paint3_linear_1_2" x1="1.4" y1="0" x2="1.4" y2="28" gradientUnits="userSpaceOnUse"><stop stop-color="#00BFFF"/><stop offset="1" stop-color="#50E3C2"/></linearGradient>
+                <linearGradient id="paint4_linear_1_2" x1="98.4938" y1="2.52" x2="98.4938" y2="25.48" gradientUnits="userSpaceOnUse"><stop stop-color="#00BFFF"/><stop offset="1" stop-color="#50E3C2"/></linearGradient>
+                <linearGradient id="paint5_linear_1_2" x1="120.828" y1="2.52" x2="120.828" y2="25.48" gradientUnits="userSpaceOnUse"><stop stop-color="#00BFFF"/><stop offset="1" stop-color="#50E3C2"/></linearGradient>
+                </defs>
+            </svg>
+        );
 
     return (
         <aside className="sidebar">
             <div className="sidebar-header">
                 {title}
-                <a onClick={toggleHandler} className="nav-link collapse-toggle">
+                <button onClick={toggleHandler} className="nav-link collapse-toggle">
                     <span className="material-symbols-outlined">{toggleIcon}</span>
-                </a>
+                </button>
             </div>
             <nav className="sidebar-nav">
                 <ul className="nav-list">
@@ -3641,7 +3732,7 @@ const TrainingView = ({ trainings, onOpenTrainingModal, onSaveTraining, ai, onAd
     );
 };
 
-const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
+const ReportsView = ({ tasks, transactions, projects, trainings, ai }: { tasks: TaskItem[], transactions: Transaction[], projects: Project[], trainings: TrainingItem[], ai: GoogleGenAI }) => {
     const [report, setReport] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
@@ -3659,9 +3750,9 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }) => {
         };
 
         const financialSummary = {
-            totalIncome: transactions.filter(t => t.type === 'income').reduce((sum: number, t) => sum + t.amount, 0),
-            totalExpense: transactions.filter(t => t.type === 'expense').reduce((sum: number, t) => sum + t.amount, 0),
-            balance: transactions.reduce((sum: number, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0),
+            totalIncome: transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0),
+            totalExpense: transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0),
+            balance: transactions.reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0),
         };
         
         const projectSummary = projects.map(p => {
@@ -3761,7 +3852,7 @@ const SettingsView = ({ theme, setTheme, onAddNotification }) => {
     );
 };
 
-const TrainingModal = ({ isOpen, onClose, onSave, training }) => {
+const TrainingModal = ({ isOpen, onClose, onSave, training }: { isOpen: boolean, onClose: () => void, onSave: (data: Partial<TrainingItem>) => void, training: TrainingItem | null }) => {
     const [title, setTitle] = useState('');
     const [provider, setProvider] = useState('');
     const [url, setUrl] = useState('');
@@ -3825,7 +3916,7 @@ const TrainingModal = ({ isOpen, onClose, onSave, training }) => {
                     </div>
                     <div className="form-group">
                         <label htmlFor="training-progress">Haladás: {progress}%</label>
-                        <input id="training-progress" type="range" min="0" max="100" step="5" value={progress} onChange={e => setProgress(Number(e.target.value))} />
+                        <input id="training-progress" type="range" min="0" max="100" step="5" value={progress} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProgress(Number(e.target.value))} />
                     </div>
                     <div className="modal-actions">
                         <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
