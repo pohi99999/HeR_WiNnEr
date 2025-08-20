@@ -73,10 +73,17 @@
     --color-destructive: #dc3545;
     --color-warning: #ffc107;
 
-    --color-bg-primary: #f4f7fc;
+    --color-bg-primary: #f4f7fc; /* Light grayish blue */
     --color-surface-glass: rgba(255, 255, 255, 0.85);
     --color-surface-glass-light: #ffffff;
     --color-surface-glass-hover: #f8f9fa;
 
-    --color-text-primary: #212529;
-    --color
+    --color-text-primary: #212529; /* Dark gray */
+    --color-text-secondary: #495057; /* Medium gray */
+    --color-text-tertiary: #6c757d; /* Lighter gray */
+    --color-text-on-primary: #ffffff;
+
+    --color-border: #dee2e6;
+    --color-border-strong: #ced4da;
+
+    --shadow-sm: 0 1px 2px 0 rgba(
