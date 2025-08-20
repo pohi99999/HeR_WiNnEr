@@ -2473,15 +2473,19 @@ const App = () => {
         handleAddNotification({ message: 'Képzés sikeresen hozzáadva!', type: 'success' });
     };
     
-    const handleSaveTraining = (trainingData) => {
+    const handleSaveTraining = (trainingData: Partial<TrainingItem> & { id?: string }) => {
         if (trainingData.id) {
             setTrainings(prev => prev.map(t => t.id === trainingData.id ? {...t, ...trainingData} : t));
             handleAddNotification({ message: 'Képzés frissítve!', type: 'success' });
         } else {
-            const newTraining = {
+            const newTraining: TrainingItem = {
                 id: `train-${Date.now()}`,
-                ...trainingData,
-                status: trainingData.progress === 100 ? 'Befejezett' : (trainingData.progress > 0 ? 'Folyamatban' : 'Nem elkezdett'),
+                title: trainingData.title || 'Cím nélküli képzés',
+                provider: trainingData.provider || 'Ismeretlen',
+                description: trainingData.description,
+                url: trainingData.url,
+                progress: trainingData.progress ?? 0,
+                status: (trainingData.progress ?? 0) === 100 ? 'Befejezett' : ((trainingData.progress ?? 0) > 0 ? 'Folyamatban' : 'Nem elkezdett'),
             };
             setTrainings(prev => [newTraining, ...prev]);
             handleAddNotification({ message: 'Képzés létrehozva!', type: 'success' });
@@ -2740,6 +2744,7 @@ const App = () => {
                 onSave={handleSaveDoc}
                 onDelete={handleDeleteDoc}
                 ai={ai}
+                theme={theme}
             />
 
              {isImageModalOpen && (
@@ -2776,7 +2781,9 @@ const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMo
                             <span className="material-symbols-outlined chevron">chevron_right</span>
                         </button>
                         <ul className={`nav-sub-list ${isOpen ? 'open' : ''}`}>
-                            {renderNavItems(item.subItems)}
+                            <div className="sub-list-wrapper">
+                                {renderNavItems(item.subItems)}
+                            </div>
                         </ul>
                     </li>
                 );
@@ -3743,4 +3750,216 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }: { tasks: 
     const [isLoading, setIsLoading] = useState(false);
 
     const generateReport = useCallback(async () => {
-        setIsLoading
+        setIsLoading(true);
+        setReport('');
+        
+        const taskSummary = `
+            - Összes feladat: ${tasks.length}
+            - Kész: ${tasks.filter(t => t.status === 'Kész').length}
+            - Folyamatban: ${tasks.filter(t => t.status === 'Folyamatban').length}
+            - Lejárt határidős (nem kész): ${tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Kész').length}
+        `;
+        const projectSummary = `
+            - Aktív projektek: ${projects.filter(p => p.status !== 'Kész').length}
+            - Befejezett projektek: ${projects.filter(p => p.status === 'Kész').length}
+        `;
+        const financeSummary = `
+            - Havi bevétel (mock): ${transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)} Ft
+            - Havi kiadás (mock): ${transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)} Ft
+        `;
+
+        const prompt = `Te egy adatelemző asszisztens vagy a P-Day Light alkalmazásban. Készíts egy barátságos, de informatív heti összefoglaló riportot a felhasználó számára a megadott adatok alapján. Emeld ki a pozitívumokat (pl. sok befejezett feladat) és a figyelmet igénylő területeket (pl. lejárt határidős feladatok). A válaszodat magyarul, markdown formátumban add meg. Legyen egy rövid bevezető, majd pontokba szedve az elemzés, és egy rövid, motiváló zárás.\n\nAdatok:\n\nFeladatok:\n${taskSummary}\n\nProjektek:\n${projectSummary}\n\nPénzügyek:\n${financeSummary}\n`;
+        
+        try {
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            setReport(response.text);
+        } catch (err) {
+            console.error("Report generation error:", err);
+            setReport("Hiba történt a riport generálása közben.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [tasks, projects, transactions, ai]);
+
+    useEffect(() => {
+        generateReport();
+    }, [generateReport]);
+
+    return (
+        <View 
+            title="Riportok" 
+            subtitle="Automatizált heti összefoglaló a teljesítményről."
+            actions={<button className="button button-primary" onClick={generateReport} disabled={isLoading}><span className="material-symbols-outlined">refresh</span>Frissítés</button>}
+        >
+            <div className="reports-view-container card">
+                {isLoading ? (
+                    <SkeletonLoader lines={10} />
+                ) : (
+                    <div className="report-content">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
+                    </div>
+                )}
+            </div>
+        </View>
+    );
+};
+
+const SettingsView = ({ theme, setTheme, onAddNotification }) => {
+    return (
+        <View title="Beállítások" subtitle="Alkalmazás testreszabása.">
+            <div className="settings-view-container">
+                <div className="card settings-card">
+                    <h3>Megjelenés</h3>
+                    <div className="form-group">
+                        <label htmlFor="theme-selector">Téma</label>
+                        <select id="theme-selector" value={theme} onChange={e => setTheme(e.target.value as any)}>
+                            <option value="dark">Sötét</option>
+                            <option value="light">Világos</option>
+                        </select>
+                    </div>
+                </div>
+                 <div className="card settings-card">
+                    <h3>Értesítések</h3>
+                    <p>Hamarosan...</p>
+                </div>
+                 <div className="card settings-card">
+                    <h3>Fiók</h3>
+                     <p>Hamarosan...</p>
+                </div>
+            </div>
+        </View>
+    );
+};
+
+const DocEditorModal = ({ isOpen, onClose, doc, onSave, onDelete, ai, theme }) => {
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
+    const [isAiPanelOpen, setAiPanelOpen] = useState(false);
+    const [aiCommand, setAiCommand] = useState('summarize');
+    const [aiPrompt, setAiPrompt] = useState('');
+    const [isAiLoading, setIsAiLoading] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && doc) {
+            setTitle(doc.title);
+            setContent(doc.content);
+            setAiPanelOpen(false);
+        }
+    }, [isOpen, doc]);
+    
+    if (!isOpen || !doc) return null;
+
+    const handleSave = () => {
+        onSave(doc.id, title, content);
+    };
+    
+    const handleAiAction = async () => {
+        if (!content && aiCommand !== 'write') return;
+        setIsAiLoading(true);
+
+        let fullPrompt = '';
+        switch(aiCommand) {
+            case 'summarize':
+                fullPrompt = `Foglald össze a következő szöveget röviden, 2-3 mondatban. A válaszodat magyarul add meg.\n\nSzöveg:\n"${content}"`;
+                break;
+            case 'improve':
+                 fullPrompt = `Javítsd fel a következő szöveget nyelvtanilag és stilisztikailag. A válaszodat magyarul add meg, és csak a javított szöveget add vissza.\n\nSzöveg:\n"${content}"`;
+                break;
+            case 'translate_en':
+                 fullPrompt = `Fordítsd le a következő szöveget angolra. Csak a lefordított szöveget add vissza.\n\nSzöveg:\n"${content}"`;
+                break;
+            case 'write':
+                 fullPrompt = `Írj egy szöveget a következő témában: "${aiPrompt}". A válaszod legyen magyar nyelvű.`;
+                break;
+        }
+
+        try {
+            const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: fullPrompt });
+            const newContent = response.text;
+            setContent((prev: string) => (prev.trim() ? prev + '\n\n---\nAI Javaslat:\n' : '') + newContent);
+        } catch (err) {
+            console.error("AI Doc Editor Error:", err);
+        } finally {
+            setIsAiLoading(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card doc-editor-modal" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="doc-editor-title-input" />
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <div className="doc-editor-body">
+                   <Editor
+                        height="100%"
+                        defaultLanguage="markdown"
+                        value={content}
+                        onChange={(value) => setContent(value || "")}
+                        theme={theme === 'dark' ? "vs-dark" : "light"}
+                        options={{ minimap: { enabled: false }, wordWrap: 'on', lineNumbers: 'off' }}
+                    />
+                </div>
+                 <div className="doc-editor-footer">
+                    <div className="doc-editor-actions-left">
+                         <button className="button button-secondary" onClick={() => setAiPanelOpen(!isAiPanelOpen)}>
+                            <span className="material-symbols-outlined">psychology</span>AI Asszisztens
+                        </button>
+                        <button className="button button-icon-only button-danger" onClick={() => onDelete(doc.id)}>
+                            <span className="material-symbols-outlined">delete</span>
+                        </button>
+                    </div>
+                    {isAiPanelOpen && (
+                        <div className="ai-doc-panel">
+                            <select value={aiCommand} onChange={e => setAiCommand(e.target.value)}>
+                                <option value="summarize">Összefoglalás</option>
+                                <option value="improve">Javítás</option>
+                                <option value="translate_en">Fordítás (Angol)</option>
+                                <option value="write">Írás</option>
+                            </select>
+                            {aiCommand === 'write' && <input type="text" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Miről írjon az AI?" />}
+                            <button onClick={handleAiAction} disabled={isAiLoading}>
+                                {isAiLoading ? <span className="material-symbols-outlined progress_activity"></span> : 'Indítás'}
+                            </button>
+                        </div>
+                    )}
+                    <button className="button button-primary" onClick={handleSave}>Mentés és Bezárás</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const TrainingModal = ({ isOpen, onClose, onSave, training }) => {
+    const [title, setTitle] = useState('');
+    const [provider, setProvider] = useState('');
+    const [description, setDescription] = useState('');
+    const [url, setUrl] = useState('');
+    const [progress, setProgress] = useState(0);
+
+    useEffect(() => {
+        if (isOpen) {
+            if (training) {
+                setTitle(training.title || '');
+                setProvider(training.provider || '');
+                setDescription(training.description || '');
+                setUrl(training.url || '');
+                setProgress(training.progress || 0);
+            } else {
+                setTitle(''); setProvider(''); setDescription(''); setUrl(''); setProgress(0);
+            }
+        }
+    }, [training, isOpen]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        onSave({ id: training?.id, title, provider, description, url, progress: Number(progress) });
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card" onClick={e
