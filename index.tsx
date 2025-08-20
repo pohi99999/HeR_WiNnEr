@@ -2032,13 +2032,18 @@ const ContactsView = ({ contacts, projects, proposals, emails, onOpenContactModa
 };
 
 
-const GlobalHeader = ({ onToggleNav, onOpenSearch }) => {
+const GlobalHeader = ({ onToggleNav, onOpenSearch, onNavigate }) => {
     const [isDropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
+    const handleNavigation = (viewId) => {
+        onNavigate(viewId);
+        setDropdownOpen(false);
+    };
+
     useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setDropdownOpen(false);
             }
         };
@@ -2066,10 +2071,10 @@ const GlobalHeader = ({ onToggleNav, onOpenSearch }) => {
                     {isDropdownOpen && (
                         <div className="profile-dropdown card">
                             <ul>
-                                <li><a href="#"><span className="material-symbols-outlined">account_circle</span>Profil</a></li>
-                                <li><a href="#"><span className="material-symbols-outlined">settings</span>Beállítások</a></li>
+                                <li><button onClick={() => handleNavigation('settings')}><span className="material-symbols-outlined">account_circle</span>Profil</button></li>
+                                <li><button onClick={() => handleNavigation('settings')}><span className="material-symbols-outlined">settings</span>Beállítások</button></li>
                                 <li className="separator"></li>
-                                <li><a href="#"><span className="material-symbols-outlined">logout</span>Kijelentkezés</a></li>
+                                <li><button><span className="material-symbols-outlined">logout</span>Kijelentkezés</button></li>
                             </ul>
                         </div>
                     )}
@@ -2597,7 +2602,7 @@ const App = () => {
             case 'settings': viewComponent = <SettingsView theme={theme} setTheme={setTheme} onAddNotification={handleAddNotification}/>; break;
             default: viewComponent = <DashboardView tasks={tasks} projects={projects} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
         }
-        return React.cloneElement(viewComponent, { key: activeView.id });
+        return React.cloneElement(viewComponent as React.ReactElement, { key: activeView.id });
     };
 
     if (!ai) {
@@ -2619,6 +2624,7 @@ const App = () => {
                 <GlobalHeader 
                     onToggleNav={() => setMobileNavOpen(!isMobileNavOpen)} 
                     onOpenSearch={() => setSearchModalOpen(true)}
+                    onNavigate={handleNavigate}
                 />
                 <main className="main-content">
                     {renderView()}
@@ -3737,302 +3743,4 @@ const ReportsView = ({ tasks, transactions, projects, trainings, ai }: { tasks: 
     const [isLoading, setIsLoading] = useState(false);
 
     const generateReport = useCallback(async () => {
-        setIsLoading(true);
-        setReport('');
-
-        const taskSummary = {
-            total: tasks.length,
-            todo: tasks.filter(t => t.status === 'Teendő').length,
-            inProgress: tasks.filter(t => t.status === 'Folyamatban').length,
-            done: tasks.filter(t => t.status === 'Kész').length,
-            critical: tasks.filter(t => t.priority === 'Kritikus' && t.status !== 'Kész').length,
-            overdue: tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Kész').length,
-        };
-
-        const financialSummary = {
-            totalIncome: transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0),
-            totalExpense: transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0),
-            balance: transactions.reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0),
-        };
-        
-        const projectSummary = projects.map(p => {
-            const relatedTasks = tasks.filter(t => t.projectId === p.id);
-            const completed = relatedTasks.filter(t => t.status === 'Kész').length;
-            const progress = relatedTasks.length > 0 ? (completed / relatedTasks.length) * 100 : 0;
-            return { title: p.title, status: p.status, progress: Math.round(progress) };
-        });
-
-        const completedTrainings = trainings.filter(t => t.status === 'Befejezett').length;
-        const trainingProgress = trainings.length > 0 ? Math.round((completedTrainings / trainings.length) * 100) : 0;
-
-        const prompt = `
-        Te egy adatelemző asszisztens vagy a P-Day Light alkalmazásban. A feladatod, hogy egy barátságos, de informatív heti összefoglaló riportot készíts a felhasználó számára a megadott JSON adatok alapján. Emeld ki a legfontosabb trendeket, a jól teljesítő területeket és azokat, amikre figyelni kell. A válaszodat magyarul add meg, markdown formátumban. Használj címsorokat, listákat a jobb olvashatóságért.
-        
-        Adatok:
-        - Feladatok: ${JSON.stringify(taskSummary)}
-        - Pénzügyek: ${JSON.stringify(financialSummary)}
-        - Projektek: ${JSON.stringify(projectSummary)}
-        - Képzések: Összesen ${trainings.length} képzés, ${trainingProgress}% befejezve.
-
-        Kezdd egy rövid, pozitív hangvételű bevezetővel. Adj javaslatokat is, pl. ha sok a lejárt feladat, javasold azok átnézését.
-        `;
-
-        try {
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-            setReport(response.text);
-        } catch (err) {
-            console.error("Report generation error:", err);
-            setReport("Hiba történt a riport generálása közben.");
-        } finally {
-            setIsLoading(false);
-        }
-    }, [tasks, transactions, projects, trainings, ai]);
-
-    useEffect(() => {
-        generateReport();
-    }, [generateReport]);
-
-    return (
-        <View title="Heti Riport" subtitle="Automatikus összefoglaló a teljesítményedről.">
-            <div className="reports-view-container">
-                <div className="card report-card">
-                    <div className="report-header">
-                        <h3>Gemini Elemzés</h3>
-                        <button onClick={generateReport} disabled={isLoading} className="button button-secondary">
-                             <span className={`material-symbols-outlined ${isLoading ? 'progress_activity' : ''}`}>{isLoading ? 'progress_activity' : 'refresh'}</span>
-                            Frissítés
-                        </button>
-                    </div>
-                     <div className="report-content">
-                        {isLoading ? <SkeletonLoader lines={8} /> : <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>}
-                    </div>
-                </div>
-            </div>
-        </View>
-    );
-};
-
-const SettingsView = ({ theme, setTheme, onAddNotification }) => {
-    const handleThemeChange = (newTheme: 'light' | 'dark') => {
-        setTheme(newTheme);
-        onAddNotification({ message: `Téma megváltoztatva: ${newTheme === 'light' ? 'Világos' : 'Sötét'}`, type: 'success' });
-    };
-
-    return (
-        <View title="Beállítások" subtitle="Az alkalmazás testreszabása.">
-            <div className="settings-view-container">
-                <div className="card settings-card">
-                    <h3>Megjelenés</h3>
-                    <div className="setting-item">
-                        <label>Téma</label>
-                        <div className="theme-switcher">
-                            <button onClick={() => handleThemeChange('light')} className={`button ${theme === 'light' ? 'active' : ''}`}>
-                                <span className="material-symbols-outlined">light_mode</span>Világos
-                            </button>
-                            <button onClick={() => handleThemeChange('dark')} className={`button ${theme === 'dark' ? 'active' : ''}`}>
-                                <span className="material-symbols-outlined">dark_mode</span>Sötét
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                 <div className="card settings-card">
-                    <h3>Fiók</h3>
-                    <div className="setting-item">
-                        <p>Fiók beállítások hamarosan...</p>
-                    </div>
-                </div>
-                 <div className="card settings-card">
-                    <h3>Adatkezelés</h3>
-                     <div className="setting-item">
-                        <p>Adatok exportálása és importálása hamarosan...</p>
-                    </div>
-                </div>
-            </div>
-        </View>
-    );
-};
-
-const TrainingModal = ({ isOpen, onClose, onSave, training }: { isOpen: boolean, onClose: () => void, onSave: (data: Partial<TrainingItem>) => void, training: TrainingItem | null }) => {
-    const [title, setTitle] = useState('');
-    const [provider, setProvider] = useState('');
-    const [url, setUrl] = useState('');
-    const [description, setDescription] = useState('');
-    const [progress, setProgress] = useState(0);
-
-    useEffect(() => {
-        if (isOpen) {
-            if (training) {
-                setTitle(training.title || '');
-                setProvider(training.provider || '');
-                setUrl(training.url || '');
-                setDescription(training.description || '');
-                setProgress(training.progress || 0);
-            } else {
-                setTitle(''); setProvider(''); setUrl(''); setDescription(''); setProgress(0);
-            }
-        }
-    }, [training, isOpen]);
-
-    if (!isOpen) return null;
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (!title.trim()) return;
-        onSave({
-            id: training?.id,
-            title: title.trim(),
-            provider: provider.trim(),
-            url: url.trim(),
-            description: description.trim(),
-            progress: Number(progress),
-        });
-    };
-
-    return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content card" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h3>{training ? "Képzés Módosítása" : "Új Képzés"}</h3>
-                    <button onClick={onClose} className="button-icon-close">&times;</button>
-                </div>
-                <form onSubmit={handleSubmit} className="modal-form">
-                    <div className="form-group">
-                        <label htmlFor="training-title">Cím</label>
-                        <input id="training-title" type="text" value={title} onChange={e => setTitle(e.target.value)} required />
-                    </div>
-                    <div className="form-group-inline">
-                        <div className="form-group">
-                            <label htmlFor="training-provider">Szolgáltató</label>
-                            <input id="training-provider" type="text" value={provider} onChange={e => setProvider(e.target.value)} />
-                        </div>
-                        <div className="form-group">
-                            <label htmlFor="training-url">URL</label>
-                            <input id="training-url" type="url" value={url} onChange={e => setUrl(e.target.value)} />
-                        </div>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="training-description">Leírás</label>
-                        <textarea id="training-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}></textarea>
-                    </div>
-                    <div className="form-group">
-                        <label htmlFor="training-progress">Haladás: {progress}%</label>
-                        <input id="training-progress" type="range" min="0" max="100" step="5" value={progress} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProgress(Number(e.target.value))} />
-                    </div>
-                    <div className="modal-actions">
-                        <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
-                        <button type="submit" className="button button-primary">Mentés</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-const DocEditorModal = ({ isOpen, onClose, doc, onSave, onDelete, ai }) => {
-    const [title, setTitle] = useState('');
-    const [content, setContent] = useState('');
-    const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
-    const [aiAction, setAiAction] = useState<'summarize' | 'improve' | 'fix'>('improve');
-    const [aiResult, setAiResult] = useState('');
-    const [isGenerating, setIsGenerating] = useState(false);
-    
-    useEffect(() => {
-        if (isOpen && doc) {
-            setTitle(doc.title);
-            setContent(doc.content);
-            setAiResult('');
-        }
-    }, [isOpen, doc]);
-
-    if (!isOpen || !doc) return null;
-
-    const handleSave = () => {
-        onSave(doc.id, title, content);
-    };
-
-    const handleAiAction = async () => {
-        if (!content.trim()) return;
-        setIsGenerating(true);
-        setAiResult('');
-        
-        const actionPrompts = {
-            summarize: "Készíts egy rövid, 2-3 mondatos összefoglalót a következő szövegről:",
-            improve: "Fogalmazd át a következő szöveget, hogy professzionálisabb és olvashatóbb legyen:",
-            fix: "Javítsd ki a nyelvtani és helyesírási hibákat a következő szövegben:"
-        };
-
-        const prompt = `${actionPrompts[aiAction]}\n\n"${content}"`;
-
-        try {
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-            setAiResult(response.text);
-        } catch (err) {
-            console.error("Doc AI action error:", err);
-            setAiResult("Hiba történt a generálás közben.");
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-    const handleReplaceContent = () => {
-        setContent(aiResult);
-        setAiResult('');
-    };
-
-    return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className={`modal-content card doc-editor-modal ${isAiPanelOpen ? 'ai-panel-active' : ''}`} onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="doc-editor-title-input" />
-                    <div className="editor-actions">
-                         <button className="button button-secondary" onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}>
-                             <span className="material-symbols-outlined">psychology</span>AI Asszisztens
-                         </button>
-                        <button onClick={handleSave} className="button button-primary">Mentés</button>
-                        <button onClick={onClose} className="button-icon-close">&times;</button>
-                    </div>
-                </div>
-                <div className="doc-editor-body">
-                    <div className="editor-container">
-                        <Editor
-                            height="100%"
-                            language="markdown"
-                            value={content}
-                            onChange={(value) => setContent(value || '')}
-                            theme={document.body.classList.contains('theme-dark') ? 'vs-dark' : 'light'}
-                            options={{ minimap: { enabled: false }, wordWrap: 'on' }}
-                        />
-                    </div>
-                    {isAiPanelOpen && (
-                        <aside className="ai-editor-panel">
-                            <h4>AI Műveletek</h4>
-                            <div className="ai-action-selector">
-                                <button onClick={() => setAiAction('improve')} className={aiAction === 'improve' ? 'active' : ''}>Javítás</button>
-                                <button onClick={() => setAiAction('summarize')} className={aiAction === 'summarize' ? 'active' : ''}>Összefoglalás</button>
-                                <button onClick={() => setAiAction('fix')} className={aiAction === 'fix' ? 'active' : ''}>Helyesírás</button>
-                            </div>
-                            <button onClick={handleAiAction} disabled={isGenerating || !content.trim()} className="button button-secondary generate-button">
-                                {isGenerating ? <span className="material-symbols-outlined progress_activity"></span> : <span className="material-symbols-outlined">auto_awesome</span>}
-                                Generálás
-                            </button>
-                            {aiResult && (
-                                <div className="ai-result-box">
-                                    <p>{aiResult}</p>
-                                    <button onClick={handleReplaceContent} className="button button-primary">Szöveg cseréje</button>
-                                </div>
-                            )}
-                        </aside>
-                    )}
-                </div>
-                 <div className="modal-actions" style={{justifyContent: 'flex-start'}}>
-                     <button className="button button-danger" onClick={() => onDelete(doc.id)}>
-                        <span className="material-symbols-outlined">delete</span> Jegyzet Törlése
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-root.render(<App />);
+        setIsLoading
