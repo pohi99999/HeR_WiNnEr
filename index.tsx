@@ -2781,9 +2781,7 @@ const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMo
                             <span className="material-symbols-outlined chevron">chevron_right</span>
                         </button>
                         <ul className={`nav-sub-list ${isOpen ? 'open' : ''}`}>
-                            <div className="sub-list-wrapper">
-                                {renderNavItems(item.subItems)}
-                            </div>
+                            {renderNavItems(item.subItems)}
                         </ul>
                     </li>
                 );
@@ -3559,8 +3557,8 @@ const ProposalsView = ({ proposals, setProposals, onOpenProposalModal, onProposa
 
 const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
     const summary = useMemo(() => {
-        const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-        const expense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+        const income = transactions.filter(t => t.type === 'income').reduce((sum: number, t) => sum + t.amount, 0);
+        const expense = transactions.filter(t => t.type === 'expense').reduce((sum: number, t) => sum + t.amount, 0);
         return { income, expense, balance: income - expense };
     }, [transactions]);
 
@@ -3572,7 +3570,7 @@ const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
                 return acc;
             }, {} as Record<FinancialCategory, number>);
         
-        const totalExpense = Object.values(byCategory).reduce((sum, amount) => sum + amount, 0);
+        const totalExpense = Object.values(byCategory).reduce((sum: number, amount: number) => sum + amount, 0);
         if (totalExpense === 0) return [];
         
         return Object.entries(byCategory)
@@ -3863,7 +3861,7 @@ const DocEditorModal = ({ isOpen, onClose, doc, onSave, onDelete, ai, theme }) =
                 fullPrompt = `Foglald össze a következő szöveget röviden, 2-3 mondatban. A válaszodat magyarul add meg.\n\nSzöveg:\n"${content}"`;
                 break;
             case 'improve':
-                 fullPrompt = `Javítsd fel a következő szöveget nyelvtanilag és stilisztikailag. A válaszodat magyarul add meg, és csak a javított szöveget add vissza.\n\nSzöveg:\n"${content}"`;
+                 fullPrompt = `Javítsd fel a következő szöveget nyelvtanilag és stilisztilag. A válaszodat magyarul add meg, és csak a javított szöveget add vissza.\n\nSzöveg:\n"${content}"`;
                 break;
             case 'translate_en':
                  fullPrompt = `Fordítsd le a következő szöveget angolra. Csak a lefordított szöveget add vissza.\n\nSzöveg:\n"${content}"`;
@@ -3962,4 +3960,40 @@ const TrainingModal = ({ isOpen, onClose, onSave, training }) => {
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content card" onClick={e
+            <div className="modal-content card" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>{training ? "Képzés Módosítása" : "Új Képzés"}</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                <form onSubmit={handleSubmit} className="modal-form">
+                    <div className="form-group">
+                        <label htmlFor="training-title">Cím</label>
+                        <input id="training-title" type="text" value={title} onChange={e => setTitle(e.target.value)} required />
+                    </div>
+                    <div className="form-group-inline">
+                        <div className="form-group">
+                            <label htmlFor="training-provider">Szolgáltató</label>
+                            <input id="training-provider" type="text" value={provider} onChange={e => setProvider(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="training-url">URL</label>
+                            <input id="training-url" type="url" value={url} onChange={e => setUrl(e.target.value)} />
+                        </div>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="training-description">Leírás</label>
+                        <textarea id="training-description" value={description} onChange={e => setDescription(e.target.value)} rows={3}></textarea>
+                    </div>
+                    <div className="form-group">
+                        <label htmlFor="training-progress">Haladás: {progress}%</label>
+                        <input id="training-progress" type="range" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))} />
+                    </div>
+                    <div className="modal-actions">
+                        <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
+                        <button type="submit" className="button button-primary">Mentés</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
