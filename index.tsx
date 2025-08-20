@@ -2780,9 +2780,11 @@ const Sidebar = ({ activeViewId, onNavigate, isCollapsed, onToggleCollapse, isMo
                             <span>{item.label}</span>
                             <span className="material-symbols-outlined chevron">chevron_right</span>
                         </button>
-                        <ul className={`nav-sub-list ${isOpen ? 'open' : ''}`}>
-                            {renderNavItems(item.subItems)}
-                        </ul>
+                        <div className={`nav-sub-list-wrapper ${isOpen ? 'open' : ''}`}>
+                            <ul className="nav-sub-list">
+                                {renderNavItems(item.subItems)}
+                            </ul>
+                        </div>
                     </li>
                 );
             }
@@ -3557,8 +3559,8 @@ const ProposalsView = ({ proposals, setProposals, onOpenProposalModal, onProposa
 
 const FinancesView = ({ transactions, ai, onOpenTransactionModal }) => {
     const summary = useMemo(() => {
-        const income = transactions.filter(t => t.type === 'income').reduce((sum: number, t) => sum + t.amount, 0);
-        const expense = transactions.filter(t => t.type === 'expense').reduce((sum: number, t) => sum + t.amount, 0);
+        const income = transactions.filter(t => t.type === 'income').reduce((sum: number, t) => sum + Number(t.amount), 0);
+        const expense = transactions.filter(t => t.type === 'expense').reduce((sum: number, t) => sum + Number(t.amount), 0);
         return { income, expense, balance: income - expense };
     }, [transactions]);
 
@@ -3986,7 +3988,7 @@ const TrainingModal = ({ isOpen, onClose, onSave, training }) => {
                     </div>
                     <div className="form-group">
                         <label htmlFor="training-progress">Haladás: {progress}%</label>
-                        <input id="training-progress" type="range" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))} />
+                        <input id="training-progress" type="range" min="0" max="100" value={progress} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProgress(Number(e.target.value))} />
                     </div>
                     <div className="modal-actions">
                         <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
