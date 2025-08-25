@@ -88,7 +88,7 @@ interface SubTask {
 
 type TaskPriority = 'Alacsony' | 'Közepes' | 'Magas' | 'Kritikus';
 type TaskStatus = 'Teendő' | 'Folyamatban' | 'Kész' | 'Blokkolt';
-type TaskCategory = 'Munka' | 'Személyes' | 'Projekt' | 'Tanulás' | 'Ügyfél' | 'Email' | 'Pályázat';
+type TaskCategory = 'Munka' | 'Személyes' | 'Projekt' | 'Tanulás' | 'Ügyfél' | 'Email' | 'Pályázat' | 'Meeting';
 
 type FinancialCategory = 'Fizetés' | 'Élelmiszer' | 'Rezsi' | 'Utazás' | 'Szórakozás' | 'Egyéb bevétel' | 'Egyéb kiadás';
 
@@ -313,6 +313,7 @@ const navigationData: NavItem[] = [
         icon: 'smart_toy', 
         subItems: [
             { id: 'ai-chat', label: 'Általános Chat', icon: 'chat' },
+            { id: 'ai-meeting', label: 'Meeting Asszisztens', icon: 'mic' },
             { id: 'ai-creative', label: 'Kreatív Eszközök', icon: 'brush' },
         ] 
     },
@@ -650,7 +651,7 @@ const TaskModal = ({ isOpen, onClose, onSaveTask, initialData = null, defaultVal
                      <div className="form-group">
                         <label htmlFor="task-category">Kategória</label>
                         <select id="task-category" value={category} onChange={e => setCategory(e.target.value as TaskCategory)} disabled={!!projectId}>
-                             {Object.values(['Munka', 'Személyes', 'Projekt', 'Tanulás', 'Ügyfél', 'Email', 'Pályázat']).map(cat => (
+                             {Object.values(['Munka', 'Személyes', 'Projekt', 'Tanulás', 'Ügyfél', 'Email', 'Pályázat', 'Meeting']).map(cat => (
                                 <option key={cat} value={cat}>{cat}</option>
                             ))}
                         </select>
@@ -2208,7 +2209,6 @@ const ContactsView = ({ contacts, projects, proposals, emails, onOpenContactModa
     );
 };
 
-
 const GlobalHeader = ({ onToggleNav, onOpenSearch, onNavigate }) => {
     const [isDropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -2807,6 +2807,7 @@ const App = () => {
             case 'contacts': viewComponent = <ContactsView contacts={contacts} projects={projects} proposals={proposals} emails={emails} onOpenContactModal={handleOpenContactModal} ai={ai} onAddNotification={handleAddNotification} />; break;
             case 'reports': viewComponent = <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />; break;
             case 'ai-chat': viewComponent = <AiChatView ai={ai} tasks={tasks} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />; break;
+            case 'ai-meeting': viewComponent = <AiMeetingView ai={ai} onAddTasksBatch={handleAddTasksBatch} onAddNotification={handleAddNotification} />; break;
             case 'ai-creative': viewComponent = <AiCreativeView ai={ai} onSaveToDocs={handleSaveImageToDocs} onAddNotification={handleAddNotification} />; break;
             case 'settings': viewComponent = <SettingsView theme={theme} setTheme={setTheme} onAddNotification={handleAddNotification}/>; break;
             default: viewComponent = <DashboardView tasks={tasks} projects={projects} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
@@ -4145,6 +4146,233 @@ const DocEditorModal = ({ isOpen, onClose, doc, onSave, onDelete, ai, theme }) =
         </div>
     );
 };
+
+const AiMeetingView = ({ ai, onAddTasksBatch, onAddNotification }) => {
+    type MeetingState = 'idle' | 'recording' | 'analyzing' | 'results';
+    
+    interface AnalysisResult {
+        summary: string;
+        actionItems: { id: string, text: string, checked: boolean }[];
+    }
+
+    const [meetingState, setMeetingState] = useState<MeetingState>('idle');
+    const [transcript, setTranscript] = useState('');
+    const [interimTranscript, setInterimTranscript] = useState('');
+    const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+    const [error, setError] = useState('');
+    const recognitionRef = useRef<any>(null);
+
+    useEffect(() => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            setError('A böngészője nem támogatja a hangfelismerést.');
+            return;
+        }
+
+        recognitionRef.current = new SpeechRecognition();
+        const recognition = recognitionRef.current;
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'hu-HU';
+
+        let finalTranscript = '';
+
+        recognition.onresult = (event) => {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interim += event.results[i][0].transcript;
+                }
+            }
+            setTranscript(finalTranscript);
+            setInterimTranscript(interim);
+        };
+        
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            setError('Hiba történt a hangfelismerés közben.');
+            setMeetingState('idle');
+        };
+
+        return () => {
+            recognition.stop();
+        };
+    }, []);
+
+    const handleStartRecording = () => {
+        setMeetingState('recording');
+        setTranscript('');
+        setInterimTranscript('');
+        setAnalysisResult(null);
+        setError('');
+        recognitionRef.current.start();
+    };
+
+    const handleStopAndAnalyze = async () => {
+        recognitionRef.current.stop();
+        setMeetingState('analyzing');
+        
+        const schema = {
+            type: Type.OBJECT,
+            properties: {
+                summary: { type: Type.STRING, description: "A megbeszélés kulcsfontosságú pontjainak, döntéseinek és eredményeinek tömör, bekezdésekre tagolt összefoglalója." },
+                actionItems: {
+                    type: Type.ARRAY,
+                    description: "Az átiratból azonosított, egyértelmű, végrehajtható feladatok listája.",
+                    items: {
+                        type: Type.STRING,
+                        description: "Egyetlen, teljes mondat, amely leírja a teendőt, és igével kezdődik. Pl. 'A negyedéves jelentés elküldése a marketing csapatnak.'"
+                    }
+                }
+            },
+            required: ['summary', 'actionItems']
+        };
+
+        const prompt = `Te egy rendkívül hatékony meeting asszisztens vagy. A feladatod, hogy feldolgozz egy megbeszélés-átiratot, és készíts egy strukturált összefoglalót, valamint egy listát a végrehajtható feladatokról (action items). A kimenetnek JSON formátumúnak kell lennie, a megadott séma szerint.\n\nMeeting Átirat:\n---\n${transcript}\n---`;
+
+        try {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash", contents: prompt,
+                config: { responseMimeType: "application/json", responseSchema: schema }
+            });
+            const result = JSON.parse(response.text.trim());
+            setAnalysisResult({
+                summary: result.summary || 'Nem sikerült összefoglalót generálni.',
+                actionItems: Array.isArray(result.actionItems) 
+                    ? result.actionItems.map(item => ({ id: `ai-task-${Math.random()}`, text: item, checked: true }))
+                    : []
+            });
+            setMeetingState('results');
+        } catch (err) {
+            console.error("Meeting analysis error:", err);
+            setError("Hiba történt a megbeszélés elemzése közben.");
+            setMeetingState('idle');
+            onAddNotification({ message: 'Hiba történt a meeting elemzése közben.', type: 'error' });
+        }
+    };
+    
+    const handleToggleActionItem = (id: string) => {
+        setAnalysisResult(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                actionItems: prev.actionItems.map(item => item.id === id ? { ...item, checked: !item.checked } : item)
+            };
+        });
+    };
+
+    const handleSaveTasks = () => {
+        if (!analysisResult) return;
+        const tasksToAdd = analysisResult.actionItems
+            .filter(item => item.checked)
+            .map(item => ({
+                title: item.text,
+                category: 'Meeting' as TaskCategory,
+                priority: 'Közepes' as TaskPriority,
+            }));
+
+        if (tasksToAdd.length > 0) {
+            onAddTasksBatch(tasksToAdd);
+            onAddNotification({ message: `${tasksToAdd.length} feladat hozzáadva a meeting alapján.`, type: 'success' });
+            setMeetingState('idle'); // Reset view after saving
+        } else {
+             onAddNotification({ message: 'Nincs kijelölt feladat a mentéshez.', type: 'info' });
+        }
+    };
+
+    const renderContent = () => {
+        switch (meetingState) {
+            case 'recording':
+            case 'analyzing':
+                return (
+                    <div className="card">
+                        <h3>{meetingState === 'recording' ? 'Felvétel folyamatban...' : 'Elemzés...'}</h3>
+                        <div className="live-transcript">
+                            <p>{transcript} <span className="interim">{interimTranscript}</span></p>
+                        </div>
+                    </div>
+                );
+            case 'results':
+                if (!analysisResult) return null;
+                return (
+                    <div className="analysis-results-grid">
+                        <div className="card result-summary">
+                            <h3><span className="material-symbols-outlined">summarize</span>Összefoglaló</h3>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysisResult.summary}</ReactMarkdown>
+                        </div>
+                        <div className="card result-action-items">
+                             <h3><span className="material-symbols-outlined">checklist</span>Akciópontok</h3>
+                             <div className="action-items-list">
+                                {analysisResult.actionItems.length > 0 ? analysisResult.actionItems.map(item => (
+                                    <div key={item.id} className="action-item">
+                                        <input type="checkbox" id={item.id} checked={item.checked} onChange={() => handleToggleActionItem(item.id)} />
+                                        <label htmlFor={item.id}>{item.text}</label>
+                                    </div>
+                                )) : <p>Nem találhatóak akciópontok.</p>}
+                             </div>
+                        </div>
+                         <div className="card result-full-transcript" style={{gridColumn: '1 / -1'}}>
+                            <details>
+                                <summary>Teljes átirat megtekintése</summary>
+                                <p>{transcript}</p>
+                            </details>
+                        </div>
+                    </div>
+                );
+            default: // idle
+                return (
+                    <div className="empty-state-placeholder">
+                        <span className="material-symbols-outlined">mic</span>
+                        <p>Rögzítse a megbeszélését, és a Gemini összefoglalja Önnek.</p>
+                        {error && <p className="error-message">{error}</p>}
+                    </div>
+                );
+        }
+    };
+
+    return (
+        <View title="AI Meeting Asszisztens" subtitle="Rögzítés, átirat, összefoglaló és teendők egy helyen.">
+            <div className="meeting-view-container">
+                <div className="meeting-controls">
+                    {meetingState === 'idle' && (
+                        <button className="button button-primary record-button" onClick={handleStartRecording}>
+                            <span className="material-symbols-outlined">radio_button_checked</span>
+                            Meeting Indítása
+                        </button>
+                    )}
+                    {meetingState === 'recording' && (
+                         <button className="button button-danger record-button" onClick={handleStopAndAnalyze}>
+                            <span className="material-symbols-outlined">stop_circle</span>
+                            Megállítás és Elemzés
+                        </button>
+                    )}
+                    {meetingState === 'results' && (
+                        <>
+                             <button className="button button-secondary" onClick={handleStartRecording}>
+                                <span className="material-symbols-outlined">refresh</span>
+                                Új Meeting Indítása
+                            </button>
+                            <button className="button button-primary" onClick={handleSaveTasks} disabled={!analysisResult?.actionItems.some(i => i.checked)}>
+                                <span className="material-symbols-outlined">add_task</span>
+                                Kijelöltek Hozzáadása a Feladatokhoz
+                            </button>
+                        </>
+                    )}
+                     {meetingState === 'analyzing' && (
+                        <button className="button button-primary" disabled>
+                            <span className="material-symbols-outlined progress_activity"></span>
+                            Elemzés...
+                        </button>
+                    )}
+                </div>
+                {renderContent()}
+            </div>
+        </View>
+    );
+};
+
 
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
 root.render(<App />);
