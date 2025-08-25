@@ -364,7 +364,26 @@ const NotificationContainer = ({ notifications, onDismiss }) => (
 );
 
 // --- DASHBOARD WIDGETS ---
-const QuickActions = ({ onOpenTaskModal, onOpenEventModal, onOpenEmailComposeModal }) => ( <div className="quick-actions"> <button className="button button-primary" onClick={() => onOpenTaskModal()}><span className="material-symbols-outlined">add_task</span> Új feladat</button> <button className="button button-secondary" onClick={() => onOpenEventModal()}><span className="material-symbols-outlined">edit_calendar</span> Új esemény</button> <button className="button button-secondary"><span className="material-symbols-outlined">post_add</span> Új dokumentum</button> <button className="button button-secondary" onClick={() => onOpenEmailComposeModal()}><span className="material-symbols-outlined">edit</span> Email írása</button> </div>);
+const QuickActions = ({ onOpenTaskModal, onOpenEventModal, onOpenEmailComposeModal, onOpenNewDoc }) => (
+    <div className="quick-actions">
+        <button className="quick-action-card" onClick={() => onOpenTaskModal()}>
+            <span className="material-symbols-outlined">add_task</span>
+            <span>Új feladat</span>
+        </button>
+        <button className="quick-action-card" onClick={() => onOpenEventModal()}>
+            <span className="material-symbols-outlined">edit_calendar</span>
+            <span>Új esemény</span>
+        </button>
+        <button className="quick-action-card" onClick={onOpenNewDoc}>
+            <span className="material-symbols-outlined">post_add</span>
+            <span>Új dokumentum</span>
+        </button>
+        <button className="quick-action-card" onClick={() => onOpenEmailComposeModal()}>
+            <span className="material-symbols-outlined">edit</span>
+            <span>Email írása</span>
+        </button>
+    </div>
+);
 
 const DailyBriefingWidget = ({ tasks, events, emails, proposals, ai }: { tasks: TaskItem[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI }) => {
     const [summary, setSummary] = useState('');
@@ -458,10 +477,10 @@ const View = ({ title, subtitle, children, actions }: { title: any; subtitle: an
     </div>
 );
 
-const DashboardView = ({ tasks, projects, events, emails, proposals, ai, onOpenTaskModal, onOpenEventModal, onOpenEmailComposeModal }: { tasks: TaskItem[], projects: Project[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI, onOpenTaskModal: () => void, onOpenEventModal: () => void, onOpenEmailComposeModal: () => void }) => (
+const DashboardView = ({ tasks, projects, events, emails, proposals, ai, onOpenTaskModal, onOpenEventModal, onOpenEmailComposeModal, onOpenNewDoc }: { tasks: TaskItem[], projects: Project[], events: PlannerEvent[], emails: EmailMessage[], proposals: Proposal[], ai: GoogleGenAI, onOpenTaskModal: () => void, onOpenEventModal: () => void, onOpenEmailComposeModal: () => void, onOpenNewDoc: () => void }) => (
     <View title="Dashboard" subtitle="Üdvözöljük a P-Day Light alkalmazásban!">
         <div className="dashboard-layout">
-            <QuickActions onOpenTaskModal={onOpenTaskModal} onOpenEventModal={onOpenEventModal} onOpenEmailComposeModal={onOpenEmailComposeModal}/>
+            <QuickActions onOpenTaskModal={onOpenTaskModal} onOpenEventModal={onOpenEventModal} onOpenEmailComposeModal={onOpenEmailComposeModal} onOpenNewDoc={onOpenNewDoc}/>
             <div className="dashboard-grid">
                 <DailyBriefingWidget tasks={tasks} events={events} emails={emails} proposals={proposals} ai={ai} />
                 <UpcomingTasksWidget tasks={tasks} />
@@ -2795,7 +2814,7 @@ const App = () => {
     const renderView = () => {
         let viewComponent;
         switch (activeView.id) {
-            case 'dashboard': viewComponent = <DashboardView tasks={tasks} projects={projects} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />; break;
+            case 'dashboard': viewComponent = <DashboardView tasks={tasks} projects={projects} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} onOpenNewDoc={() => handleOpenDocEditor(null)} />; break;
             case 'tasks': viewComponent = <TasksView tasks={tasks} emails={emails} projects={projects} proposals={proposals} trainings={trainings} setTasks={setTasks} onOpenTaskModal={handleOpenTaskModal} onAddNotification={handleAddNotification} />; break;
             case 'planner': viewComponent = <PlannerView events={plannerEvents} onOpenEventModal={handleOpenEventModal} onOpenDayModal={handleOpenDayModal} />; break;
             case 'email': viewComponent = <EmailView emails={emails} ai={ai} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} onOpenEmailCompose={handleOpenEmailComposeModal} />; break;
@@ -2810,7 +2829,7 @@ const App = () => {
             case 'ai-meeting': viewComponent = <AiMeetingView ai={ai} onAddTasksBatch={handleAddTasksBatch} onAddNotification={handleAddNotification} />; break;
             case 'ai-creative': viewComponent = <AiCreativeView ai={ai} onSaveToDocs={handleSaveImageToDocs} onAddNotification={handleAddNotification} />; break;
             case 'settings': viewComponent = <SettingsView theme={theme} setTheme={setTheme} onAddNotification={handleAddNotification}/>; break;
-            default: viewComponent = <DashboardView tasks={tasks} projects={projects} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} />;
+            default: viewComponent = <DashboardView tasks={tasks} projects={projects} events={plannerEvents} emails={emails} proposals={proposals} ai={ai} onOpenTaskModal={handleOpenTaskModal} onOpenEventModal={handleOpenEventModal} onOpenEmailComposeModal={handleOpenEmailComposeModal} onOpenNewDoc={() => handleOpenDocEditor(null)} />;
         }
         return React.cloneElement(viewComponent as React.ReactElement, { key: activeView.id });
     };
@@ -3440,7 +3459,7 @@ const ProposalDetailModal = ({ isOpen, onClose, proposal, tasks, docs, contacts,
 
     const handleImproveSummary = async () => {
         setIsImprovingSummary(true);
-        const prompt = `Te egy profi pályázatíró asszisztens vagy. Javítsd fel a következő pályázati összefoglalót, hogy professzionálisabb és meggyőzőbb legyen. A válaszodat magyarul add meg, és csak a javított szöveget add vissza, mindenféle bevezető vagy magyarázat nélkül.\n\nPályázat címe: "${proposal.title}"\n\nEredeti összefoglaló:\n"${currentSummary}"`;
+        const prompt = `Te egy profi pályázatíró asszisztens vagy. Javítsd fel a következő pályázati összefoglalót, hogy professzionálisabb és meggyőzőbb legyen. A válaszod magyarul add meg, és csak a javított szöveget add vissza, mindenféle bevezető vagy magyarázat nélkül.\n\nPályázat címe: "${proposal.title}"\n\nEredeti összefoglaló:\n"${currentSummary}"`;
         try {
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
             setImprovedSummary(response.text);
@@ -4286,93 +4305,4 @@ const AiMeetingView = ({ ai, onAddTasksBatch, onAddNotification }) => {
         switch (meetingState) {
             case 'recording':
             case 'analyzing':
-                return (
-                    <div className="card">
-                        <h3>{meetingState === 'recording' ? 'Felvétel folyamatban...' : 'Elemzés...'}</h3>
-                        <div className="live-transcript">
-                            <p>{transcript} <span className="interim">{interimTranscript}</span></p>
-                        </div>
-                    </div>
-                );
-            case 'results':
-                if (!analysisResult) return null;
-                return (
-                    <div className="analysis-results-grid">
-                        <div className="card result-summary">
-                            <h3><span className="material-symbols-outlined">summarize</span>Összefoglaló</h3>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysisResult.summary}</ReactMarkdown>
-                        </div>
-                        <div className="card result-action-items">
-                             <h3><span className="material-symbols-outlined">checklist</span>Akciópontok</h3>
-                             <div className="action-items-list">
-                                {analysisResult.actionItems.length > 0 ? analysisResult.actionItems.map(item => (
-                                    <div key={item.id} className="action-item">
-                                        <input type="checkbox" id={item.id} checked={item.checked} onChange={() => handleToggleActionItem(item.id)} />
-                                        <label htmlFor={item.id}>{item.text}</label>
-                                    </div>
-                                )) : <p>Nem találhatóak akciópontok.</p>}
-                             </div>
-                        </div>
-                         <div className="card result-full-transcript" style={{gridColumn: '1 / -1'}}>
-                            <details>
-                                <summary>Teljes átirat megtekintése</summary>
-                                <p>{transcript}</p>
-                            </details>
-                        </div>
-                    </div>
-                );
-            default: // idle
-                return (
-                    <div className="empty-state-placeholder">
-                        <span className="material-symbols-outlined">mic</span>
-                        <p>Rögzítse a megbeszélését, és a Gemini összefoglalja Önnek.</p>
-                        {error && <p className="error-message">{error}</p>}
-                    </div>
-                );
-        }
-    };
-
-    return (
-        <View title="AI Meeting Asszisztens" subtitle="Rögzítés, átirat, összefoglaló és teendők egy helyen.">
-            <div className="meeting-view-container">
-                <div className="meeting-controls">
-                    {meetingState === 'idle' && (
-                        <button className="button button-primary record-button" onClick={handleStartRecording}>
-                            <span className="material-symbols-outlined">radio_button_checked</span>
-                            Meeting Indítása
-                        </button>
-                    )}
-                    {meetingState === 'recording' && (
-                         <button className="button button-danger record-button" onClick={handleStopAndAnalyze}>
-                            <span className="material-symbols-outlined">stop_circle</span>
-                            Megállítás és Elemzés
-                        </button>
-                    )}
-                    {meetingState === 'results' && (
-                        <>
-                             <button className="button button-secondary" onClick={handleStartRecording}>
-                                <span className="material-symbols-outlined">refresh</span>
-                                Új Meeting Indítása
-                            </button>
-                            <button className="button button-primary" onClick={handleSaveTasks} disabled={!analysisResult?.actionItems.some(i => i.checked)}>
-                                <span className="material-symbols-outlined">add_task</span>
-                                Kijelöltek Hozzáadása a Feladatokhoz
-                            </button>
-                        </>
-                    )}
-                     {meetingState === 'analyzing' && (
-                        <button className="button button-primary" disabled>
-                            <span className="material-symbols-outlined progress_activity"></span>
-                            Elemzés...
-                        </button>
-                    )}
-                </div>
-                {renderContent()}
-            </div>
-        </View>
-    );
-};
-
-
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-root.render(<App />);
+                return
