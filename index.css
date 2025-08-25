@@ -146,7 +146,6 @@ body {
     height: 100vh;
     width: 100vw;
     background: var(--color-bg-primary);
-    transition: padding-left var(--transition-std);
 }
 
 .page-container {
@@ -156,6 +155,7 @@ body {
     height: 100%;
     overflow: hidden;
     position: relative;
+    transition: padding-left var(--transition-std);
 }
 
 .main-content {
@@ -166,10 +166,6 @@ body {
 
 /* --- SIDEBAR --- */
 .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 1000;
     width: var(--sidebar-width);
     height: 100%;
     background: var(--color-surface-glass);
@@ -179,6 +175,8 @@ body {
     transition: width var(--transition-std), transform var(--transition-std);
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
+    z-index: 1000;
 }
 
 .sidebar-header {
@@ -255,7 +253,7 @@ body {
 .nav-sub-list .nav-link {
     padding-left: calc(var(--spacing-lg) + var(--spacing-xl));
 }
-.sidebar.sidebar-collapsed {
+.app-layout:not(.mobile-nav-open) .sidebar.sidebar-collapsed {
     width: var(--sidebar-width-collapsed);
 }
 .sidebar-collapsed .nav-link span:not(.material-symbols-outlined),
@@ -280,7 +278,6 @@ body {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     padding: 0 var(--spacing-lg);
     background: var(--color-surface-glass);
     border-bottom: 1px solid var(--color-border);
@@ -291,7 +288,7 @@ body {
     z-index: 900;
 }
 .mobile-nav-toggle { display: none; }
-.global-header-actions { display: flex; align-items: center; gap: var(--spacing-md); }
+.global-header-actions { margin-left: auto; display: flex; align-items: center; gap: var(--spacing-md); }
 .search-button {
     display: flex;
     align-items: center;
@@ -332,6 +329,7 @@ body {
     align-items: center;
     justify-content: center;
     font-weight: var(--font-weight-bold);
+    flex-shrink: 0;
 }
 .user-profile-button .chevron {
     transition: transform var(--transition-std);
@@ -371,10 +369,8 @@ body {
 
 /* --- RESPONSIVE STYLES --- */
 @media (max-width: 1024px) {
-    .app-layout {
-        padding-left: 0;
-    }
     .sidebar {
+        position: fixed;
         transform: translateX(-100%);
     }
     .app-layout.mobile-nav-open .sidebar {
@@ -408,6 +404,9 @@ body {
         cursor: pointer;
         padding: var(--spacing-sm);
     }
+    .global-header-actions {
+        margin-left: 0;
+    }
 }
 
 @media (max-width: 768px) {
@@ -425,23 +424,26 @@ body {
     }
     .kanban-board {
         grid-auto-flow: column;
-        grid-auto-columns: minmax(300px, 1fr);
+        grid-auto-columns: minmax(280px, 1fr);
         overflow-x: auto;
         padding-bottom: var(--spacing-md);
+        scroll-snap-type: x mandatory;
     }
-    .tasks-kanban-board-container, .proposals-board-container {
+    .kanban-column {
+        scroll-snap-align: start;
+    }
+    .tasks-kanban-board-container, .proposals-board-container, .projects-view-container {
         overflow-x: auto;
     }
     .contacts-view-layout, .email-view-layout, .proposal-detail-modal-body {
         flex-direction: column;
     }
-    .proposal-detail-main, .proposal-ai-writer-panel {
+    .proposal-detail-main, .proposal-ai-writer-panel, .contact-list-pane, .contact-detail-pane, .ai-contact-assistant {
         width: 100%;
     }
     .modal-content {
         width: 95%;
         max-height: 90vh;
-        overflow-y: auto;
     }
     .form-group-inline {
         flex-direction: column;
@@ -451,6 +453,12 @@ body {
         flex-wrap: wrap;
         justify-content: center;
     }
+    .day-cell { padding: var(--spacing-xs); }
+    .event-pill { font-size: 0.7rem; padding: 2px 4px; }
+    .day-number { font-size: 0.8rem; }
+    .view-header { flex-direction: column; align-items: flex-start; gap: var(--spacing-md); }
+    .view-actions { width: 100%; display: flex; flex-direction: column; gap: var(--spacing-sm); }
+    .view-actions .button { width: 100%; }
 }
 
 
@@ -468,7 +476,6 @@ body {
 .card:hover {
     background: var(--color-surface-glass-hover);
 }
-
 .button {
     display: inline-flex;
     align-items: center;
@@ -482,6 +489,7 @@ body {
     cursor: pointer;
     transition: var(--transition-fast);
     white-space: nowrap;
+    -webkit-tap-highlight-color: transparent; /* For mobile */
 }
 .button .material-symbols-outlined {
     font-size: 20px;
@@ -518,6 +526,23 @@ body {
 .button-icon-only {
     padding: var(--spacing-sm);
 }
+.empty-state-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: var(--spacing-xl);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--border-radius-lg);
+    color: var(--color-text-secondary);
+    min-height: 200px;
+}
+.empty-state-placeholder .material-symbols-outlined {
+    font-size: 48px;
+    margin-bottom: var(--spacing-md);
+    opacity: 0.5;
+}
 
 /* Form Styles */
 .form-group {
@@ -537,6 +562,7 @@ input[type="text"], input[type="email"], input[type="tel"], input[type="number"]
     padding: var(--spacing-sm) var(--spacing-md);
     color: var(--color-text-primary);
     font-size: 1rem;
+    font-family: var(--font-family-sans);
 }
 input[type="text"]:focus, textarea:focus, select:focus {
     outline: none;
@@ -554,6 +580,32 @@ textarea {
 .form-group-inline .form-group {
     flex: 1;
 }
+
+/* --- VIEWS --- */
+.view-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+.view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.view-header h2 {
+    color: var(--color-text-primary);
+    font-size: 1.75rem;
+    font-weight: var(--font-weight-bold);
+}
+.view-header p {
+    color: var(--color-text-secondary);
+    margin-top: var(--spacing-xs);
+}
+.view-actions {
+    display: flex;
+    gap: var(--spacing-md);
+}
+
 
 /* --- KANBAN BOARD --- */
 .kanban-board {
@@ -639,6 +691,7 @@ textarea {
 .task-card-pills {
     display: flex;
     gap: var(--spacing-sm);
+    flex-shrink: 0;
 }
 .task-pill {
     padding: var(--spacing-xs) var(--spacing-sm);
@@ -683,12 +736,6 @@ textarea {
 }
 .task-card-kanban:active {
     cursor: grabbing;
-}
-.task-card-footer-kanban {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: var(--spacing-md);
 }
 
 /* --- DASHBOARD VIEW --- */
@@ -750,136 +797,3 @@ textarea {
 
 /* Progress Bar */
 .progress-bar-container {
-    width: 100%;
-    height: 8px;
-    background-color: var(--color-surface-glass-light);
-    border-radius: var(--border-radius-full);
-    overflow: hidden;
-}
-.progress-bar-fill {
-    height: 100%;
-    background-image: linear-gradient(90deg, var(--color-accent), var(--color-primary));
-    border-radius: var(--border-radius-full);
-    transition: width 0.5s ease-in-out;
-}
-.project-card-footer {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.8rem;
-    color: var(--color-text-secondary);
-    margin-bottom: var(--spacing-xs);
-}
-
-/* --- MODAL --- */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(5px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
-}
-.modal-content {
-    width: 100%;
-    max-width: 600px;
-}
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: var(--spacing-md);
-    border-bottom: 1px solid var(--color-border);
-}
-.button-icon-close {
-    background: none;
-    border: none;
-    color: var(--color-text-secondary);
-    font-size: 2rem;
-    line-height: 1;
-    cursor: pointer;
-}
-.modal-form {
-    padding-top: var(--spacing-lg);
-}
-.modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--spacing-md);
-    padding-top: var(--spacing-lg);
-    border-top: 1px solid var(--color-border);
-    margin-top: var(--spacing-lg);
-}
-
-/* --- AI CHAT VIEW --- */
-.chat-view {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: var(--color-surface-glass-light);
-    border-radius: var(--border-radius-lg);
-}
-.chat-messages {
-    flex-grow: 1;
-    padding: var(--spacing-lg);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-lg);
-}
-.message-bubble-wrapper {
-    display: flex;
-    gap: var(--spacing-sm);
-    max-width: 80%;
-}
-.message-bubble {
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--border-radius-lg);
-    background: var(--color-surface-glass);
-}
-.bot-message {
-    align-self: flex-start;
-}
-.user-message {
-    align-self: flex-end;
-}
-.user-message .message-bubble {
-    background: var(--color-primary);
-    color: var(--color-text-on-primary);
-}
-.markdown-content * {
-    color: inherit !important;
-}
-.chat-input-area {
-    padding: var(--spacing-md);
-    border-top: 1px solid var(--color-border);
-    display: flex;
-    gap: var(--spacing-md);
-    align-items: center;
-}
-.chat-input {
-    flex-grow: 1;
-    resize: none;
-}
-
-/* Add other component styles here, ensuring they use variables and are responsive */
-.loading-screen {
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-md);
-}
-.progress_activity {
-    animation: spin 1.5s linear infinite;
-}
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}

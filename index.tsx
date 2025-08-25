@@ -1151,6 +1151,183 @@ const AiProjectModal = ({ isOpen, onClose, onAddProjectWithTasks, ai, onAddNotif
     );
 };
 
+const AiLearningPathModal = ({ isOpen, onClose, onAddTrainingWithPath, ai, onAddNotification }) => {
+    const [step, setStep] = useState('prompt'); // prompt, loading, review
+    const [prompt, setPrompt] = useState('');
+    const [editedPlan, setEditedPlan] = useState(null);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            setStep('prompt');
+            setPrompt('');
+            setEditedPlan(null);
+            setError('');
+        }
+    }, [isOpen]);
+
+    const handleGenerate = async () => {
+        if (!prompt.trim()) return;
+        setStep('loading');
+        setError('');
+        
+        const schema = {
+            type: Type.OBJECT,
+            properties: {
+                title: { type: Type.STRING, description: "A teljes tanulási útvonal összefoglaló címe, pl. 'Modern Webfejlesztés Mesterkurzus'." },
+                description: { type: Type.STRING, description: "A tanulási útvonal rövid, 1-2 mondatos leírása." },
+                modules: {
+                    type: Type.ARRAY,
+                    description: "A tanulási útvonal logikailag szekvenciális moduljainak listája, 5-8 modulból álljon.",
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            title: { type: Type.STRING, description: "A modul címe. Pl. 'React Alapok'." },
+                            description: { type: Type.STRING, description: "A modul tartalmának rövid leírása (1 mondat)." }
+                        },
+                        required: ['title', 'description']
+                    }
+                }
+            },
+            required: ['title', 'description', 'modules']
+        };
+
+        const generationPrompt = `Te egy szakértő tananyagfejlesztő és karrier-tanácsadó vagy. A feladatod, hogy a felhasználó által megadott tanulási célból egy strukturált, lépésekre bontott tanulási tervet készíts a megadott JSON séma szerint. A modulok logikusan épüljenek egymásra.\n\nFelhasználó tanulási célja: "${prompt}"`;
+
+        try {
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: generationPrompt,
+                config: { responseMimeType: "application/json", responseSchema: schema }
+            });
+            const plan = JSON.parse(response.text.trim());
+            setEditedPlan({
+                ...plan,
+                modules: Array.isArray(plan.modules) ? plan.modules.map((mod, index) => ({ id: `new-mod-${index}`, ...mod, checked: true })) : []
+            });
+            setStep('review');
+        } catch (err) {
+            console.error("AI Learning Path Generation Error:", err);
+            setError("Hiba történt a terv generálása közben. Kérjük, próbálja újra egy másik leírással.");
+            onAddNotification({ message: 'Hiba a tanulási terv generálása közben.', type: 'error' });
+            setStep('prompt');
+        }
+    };
+
+    const handleCreatePlan = () => {
+        if (!editedPlan) return;
+        const trainingData = {
+            title: editedPlan.title,
+            description: editedPlan.description,
+            provider: 'AI által generált',
+        };
+        const tasksToCreate = editedPlan.modules
+            .filter(mod => mod.checked)
+            .map(mod => ({ title: mod.title, description: mod.description }));
+        
+        onAddTrainingWithPath(trainingData, tasksToCreate);
+        onClose();
+    };
+
+    const handlePlanChange = (field, value) => {
+        setEditedPlan(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleModuleCheck = (moduleId) => {
+        setEditedPlan(prev => ({
+            ...prev,
+            modules: prev.modules.map(mod => mod.id === moduleId ? { ...mod, checked: !mod.checked } : mod)
+        }));
+    };
+    
+    if (!isOpen) return null;
+
+    const renderContent = () => {
+        switch (step) {
+            case 'prompt':
+                return (
+                    <div className="ai-project-modal-step">
+                        <h3><span className="material-symbols-outlined">school</span>Mit szeretne megtanulni?</h3>
+                        <p>Írja le a tanulási célját, és a Gemini segít megtervezni a lépéseket egy strukturált útvonalon.</p>
+                        {error && <p className="error-message" style={{textAlign: 'left'}}>{error}</p>}
+                        <textarea
+                            value={prompt}
+                            onChange={(e) => setPrompt(e.target.value)}
+                            placeholder="Pl. Szeretnék profi szinten megtanulni webalkalmazásokat fejleszteni React és TypeScript segítségével az alapoktól."
+                            rows={6}
+                        />
+                        <div className="modal-actions">
+                            <button type="button" className="button button-secondary" onClick={onClose}>Mégse</button>
+                            <button type="button" className="button button-primary" onClick={handleGenerate} disabled={!prompt.trim()}>
+                                <span className="material-symbols-outlined">auto_awesome</span>Terv Generálása
+                            </button>
+                        </div>
+                    </div>
+                );
+            case 'loading':
+                return (
+                    <div className="ai-project-modal-step">
+                        <div className="empty-state-placeholder" style={{ background: 'transparent', border: 'none' }}>
+                            <span className="material-symbols-outlined progress_activity">progress_activity</span>
+                            <p>Tanulási útvonal készítése...</p>
+                            <span>Ez eltarthat pár másodpercig.</span>
+                        </div>
+                    </div>
+                );
+            case 'review':
+                if (!editedPlan) return null;
+                return (
+                    <div className="ai-project-modal-step">
+                        <h3><span className="material-symbols-outlined">checklist</span>Javasolt Tanulási Útvonal</h3>
+                        <p>Itt a generált terv. Módosítsa bátran, és válassza ki a modulokat, mielőtt létrehozza a képzést és a feladatokat!</p>
+                        <div className="ai-project-review-form">
+                            <div className="form-group">
+                                <label>Képzés címe</label>
+                                <input type="text" value={editedPlan.title} onChange={(e) => handlePlanChange('title', e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label>Leírás</label>
+                                <textarea value={editedPlan.description} onChange={(e) => handlePlanChange('description', e.target.value)} rows={2}></textarea>
+                            </div>
+                            <div className="form-group">
+                                <label>Javasolt Modulok (Feladatok)</label>
+                                <div className="generated-task-list">
+                                    {editedPlan.modules.map(mod => (
+                                        <div key={mod.id} className="generated-task-item">
+                                            <input type="checkbox" checked={mod.checked} onChange={() => handleModuleCheck(mod.id)} />
+                                            <div className="module-info">
+                                                <strong>{mod.title}</strong>
+                                                <span>{mod.description}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button type="button" className="button button-secondary" onClick={() => setStep('prompt')}>Vissza</button>
+                            <button type="button" className="button button-primary" onClick={handleCreatePlan}>
+                                <span className="material-symbols-outlined">rocket_launch</span>Tanulás Indítása
+                            </button>
+                        </div>
+                    </div>
+                );
+        }
+    };
+    
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content card" onClick={e => e.stopPropagation()} style={{maxWidth: '700px'}}>
+                <div className="modal-header" style={{border: 'none', paddingBottom: 0}}>
+                    <h3>AI Tanulási Tervező</h3>
+                    <button onClick={onClose} className="button-icon-close">&times;</button>
+                </div>
+                {renderContent()}
+            </div>
+        </div>
+    );
+};
+
 const ContactModal = ({ isOpen, onClose, onSave, contact }) => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
@@ -2280,6 +2457,7 @@ const App = () => {
 
     const [isTrainingModalOpen, setTrainingModalOpen] = useState(false);
     const [currentTraining, setCurrentTraining] = useState<TrainingItem | null>(null);
+    const [isAiLearningPathModalOpen, setAiLearningPathModalOpen] = useState(false);
 
     const [isContactModalOpen, setContactModalOpen] = useState(false);
     const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
@@ -2368,6 +2546,7 @@ const App = () => {
                 createdAt: new Date().toISOString(),
                 projectId: taskData.projectId,
                 proposalId: taskData.proposalId,
+                trainingId: taskData.trainingId,
                 relatedTo: taskData.relatedTo,
             };
             setTasks(prev => [newTask, ...prev]);
@@ -2426,6 +2605,32 @@ const App = () => {
         setProjects(prev => [newProject, ...prev]);
         setTasks(prev => [...newTasks, ...prev]);
         handleAddNotification({ message: `Projekt "${newProject.title}" és ${newTasks.length} feladat létrehozva!`, type: 'success' });
+    };
+    
+    const handleAddTrainingWithPath = (trainingData, tasksData: {title: string, description: string}[]) => {
+        const newTrainingId = `train-${Date.now()}`;
+        const newTraining: TrainingItem = {
+            id: newTrainingId,
+            title: trainingData.title,
+            description: trainingData.description,
+            provider: trainingData.provider,
+            status: 'Nem elkezdett',
+            progress: 0,
+        };
+        const newTasks: TaskItem[] = tasksData.map((taskData, index) => ({
+            id: `task-${Date.now()}-${index}`,
+            title: taskData.title,
+            description: taskData.description,
+            status: 'Teendő',
+            priority: 'Közepes',
+            category: 'Tanulás',
+            trainingId: newTrainingId,
+            createdAt: new Date().toISOString(),
+        }));
+
+        setTrainings(prev => [newTraining, ...prev]);
+        setTasks(prev => [...newTasks, ...prev]);
+        handleAddNotification({ message: `Képzés "${newTraining.title}" és ${newTasks.length} feladat létrehozva!`, type: 'success' });
     };
 
     const handleAddTransaction = (transactionData) => {
@@ -2598,7 +2803,7 @@ const App = () => {
             case 'proposals': viewComponent = <ProposalsView proposals={proposals} setProposals={setProposals} onOpenProposalModal={() => setProposalModalOpen(true)} onProposalClick={handleOpenProposalDetail} onAddNotification={handleAddNotification} />; break;
             case 'finances': viewComponent = <FinancesView transactions={transactions} ai={ai} onOpenTransactionModal={() => setTransactionModalOpen(true)} />; break;
             case 'docs': viewComponent = <DocsView docs={docs} onImageClick={(src) => { setImageModalSrc(src); setImageModalOpen(true); }} onOpenEditor={handleOpenDocEditor} onDeleteDoc={handleDeleteDoc} />; break;
-            case 'training': viewComponent = <TrainingView trainings={trainings} onOpenTrainingModal={handleOpenTrainingModal} onSaveTraining={handleSaveTraining} ai={ai} onAddNotification={handleAddNotification} />; break;
+            case 'training': viewComponent = <TrainingView trainings={trainings} onOpenTrainingModal={handleOpenTrainingModal} onSaveTraining={handleSaveTraining} onOpenAiLearningPathModal={() => setAiLearningPathModalOpen(true)} ai={ai} onAddNotification={handleAddNotification} />; break;
             case 'contacts': viewComponent = <ContactsView contacts={contacts} projects={projects} proposals={proposals} emails={emails} onOpenContactModal={handleOpenContactModal} ai={ai} onAddNotification={handleAddNotification} />; break;
             case 'reports': viewComponent = <ReportsView tasks={tasks} transactions={transactions} projects={projects} trainings={trainings} ai={ai} />; break;
             case 'ai-chat': viewComponent = <AiChatView ai={ai} tasks={tasks} onAddTask={handleSaveTask} onAddNotification={handleAddNotification} />; break;
@@ -2710,6 +2915,14 @@ const App = () => {
                 isOpen={isAiProjectModalOpen}
                 onClose={() => setAiProjectModalOpen(false)}
                 onAddProjectWithTasks={handleAddProjectWithTasks}
+                ai={ai}
+                onAddNotification={handleAddNotification}
+            />
+            
+            <AiLearningPathModal
+                isOpen={isAiLearningPathModalOpen}
+                onClose={() => setAiLearningPathModalOpen(false)}
+                onAddTrainingWithPath={handleAddTrainingWithPath}
                 ai={ai}
                 onAddNotification={handleAddNotification}
             />
@@ -3749,9 +3962,18 @@ const TrainingModal = ({ isOpen, onClose, onSave, training }) => {
     );
 };
 
-const TrainingView = ({ trainings, onOpenTrainingModal, onSaveTraining, ai, onAddNotification }) => {
+const TrainingView = ({ trainings, onOpenTrainingModal, onSaveTraining, onOpenAiLearningPathModal, ai, onAddNotification }) => {
     return (
-        <View title="Képzések" subtitle="Szakmai fejlődés követése." actions={<button className="button button-primary" onClick={() => onOpenTrainingModal()}><span className="material-symbols-outlined">add</span>Új Képzés</button>}>
+        <View 
+            title="Képzések" 
+            subtitle="Szakmai fejlődés követése." 
+            actions={
+                <>
+                    <button className="button button-secondary" onClick={() => onOpenTrainingModal()}><span className="material-symbols-outlined">add</span>Új Képzés</button>
+                    <button className="button button-primary" onClick={onOpenAiLearningPathModal}><span className="material-symbols-outlined">auto_awesome</span>Tanulási Útvonal Tervezése AI-val</button>
+                </>
+            }
+        >
             <div className="training-view-container">
                 {trainings.map(training => (
                     <div key={training.id} className="training-card card">
