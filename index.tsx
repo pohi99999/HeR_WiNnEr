@@ -248,25 +248,25 @@ const mockEmails: EmailMessage[] = [
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const navItems: NavItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { id: 'planner', label: 'Planner', icon: 'calendar_month' },
-    { id: 'tasks', label: 'Tasks', icon: 'task_alt' },
+    { id: 'dashboard', label: 'Irányítópult', icon: 'dashboard' },
+    { id: 'planner', label: 'Tervező', icon: 'calendar_month' },
+    { id: 'tasks', label: 'Feladatok', icon: 'task_alt' },
     { id: 'email', label: 'Email', icon: 'mail' },
     {
-        id: 'work', label: 'Work', icon: 'work', subItems: [
-            { id: 'projects', label: 'Projects', icon: 'assignment' },
-            { id: 'proposals', label: 'Proposals', icon: 'description' },
-            { id: 'trainings', label: 'Trainings', icon: 'school' },
-            { id: 'contacts', label: 'Contacts', icon: 'contacts' },
+        id: 'work', label: 'Munka', icon: 'work', subItems: [
+            { id: 'projects', label: 'Projektek', icon: 'assignment' },
+            { id: 'proposals', label: 'Pályázatok', icon: 'description' },
+            { id: 'trainings', label: 'Képzések', icon: 'school' },
+            { id: 'contacts', label: 'Névjegyek', icon: 'contacts' },
         ]
     },
-    { id: 'finances', label: 'Finances', icon: 'account_balance_wallet' },
-    { id: 'docs', label: 'Documents', icon: 'folder' },
+    { id: 'finances', label: 'Pénzügyek', icon: 'account_balance_wallet' },
+    { id: 'docs', label: 'Dokumentumok', icon: 'folder' },
     {
-        id: 'ai_tools', label: 'AI Tools', icon: 'smart_toy', subItems: [
+        id: 'ai_tools', label: 'AI Eszközök', icon: 'smart_toy', subItems: [
             { id: 'gemini_chat', label: 'Gemini Chat', icon: 'chat' },
-            { id: 'creative_tools', label: 'Creative Tools', icon: 'brush' },
-            { id: 'meeting_assistant', label: 'Meeting Assistant', icon: 'mic' },
+            { id: 'creative_tools', label: 'Kreatív Eszközök', icon: 'brush' },
+            { id: 'meeting_assistant', label: 'Meeting Asszisztens', icon: 'mic' },
         ]
     }
 ];
@@ -383,7 +383,7 @@ const GlobalHeader = ({ currentView }) => {
     const currentNavItem = navItems.flatMap(i => i.subItems || i).find(i => i.id === currentView);
     return (
         <header className="global-header">
-            <h3>{currentNavItem?.label || 'Dashboard'}</h3>
+            <h3>{currentNavItem?.label || 'Irányítópult'}</h3>
             <div className="global-header-actions">
                 <button className="user-profile-button">
                     <div className="avatar-sm">F</div>
@@ -398,7 +398,7 @@ const GlobalHeader = ({ currentView }) => {
 
 const DashboardView = ({ tasks, emails }) => (
     <div className="dashboard-grid">
-        <Card className="stagger-item" header={<h4>Tasks Due Soon</h4>}>
+        <Card className="stagger-item" header={<h4>Hamarosan lejáró feladatok</h4>}>
             <ul className="quick-list">
                 {tasks.filter(t => t.dueDate).slice(0, 5).map(task => (
                     <li key={task.id}>
@@ -408,7 +408,7 @@ const DashboardView = ({ tasks, emails }) => (
                 ))}
             </ul>
         </Card>
-        <Card className="stagger-item" style={{animationDelay: '100ms'}} header={<h4>Recent Emails</h4>}>
+        <Card className="stagger-item" style={{animationDelay: '100ms'}} header={<h4>Legutóbbi Emailek</h4>}>
              <ul className="quick-list email-list">
                 {emails.slice(0, 5).map(email => (
                     <li key={email.id}>
@@ -488,7 +488,7 @@ const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
         <div className="view-fade-in">
             <Card header={
                 <div className="view-header" style={{marginBottom: 0, flexWrap: 'nowrap'}}>
-                    <h2>Planner</h2>
+                    <h2>Tervező</h2>
                     <div className="calendar-controls">
                         <button className="btn btn-secondary btn-icon" onClick={() => changeMonth(-1)} aria-label="Previous month"><Icon name="chevron_left" /></button>
                          <h3 className="calendar-current-date">{`${year} ${monthName}`}</h3>
@@ -594,7 +594,7 @@ const TasksView = ({ tasks, updateTaskStatus }) => {
 
     return (
         <DndProvider backend={HTML5Backend}>
-            <div className="view-header"><h2>Tasks</h2></div>
+            <div className="view-header"><h2>Feladatok</h2></div>
             <div className="tasks-kanban-board-container">
                 <div className="kanban-board">
                     {statuses.map(status => (
@@ -797,7 +797,7 @@ const ProjectsView = ({ projects, tasks, updateProjectStatus }) => {
 
     return (
         <DndProvider backend={HTML5Backend}>
-            <div className="view-header"><h2>Projects</h2></div>
+            <div className="view-header"><h2>Projektek</h2></div>
             <div className="tasks-kanban-board-container">
                 <div className="kanban-board">
                     {statuses.map(status => (
@@ -815,11 +815,100 @@ const ProjectsView = ({ projects, tasks, updateProjectStatus }) => {
     );
 };
 
-const ProposalsView = () => <div className="view-fade-in"><Card header={<h2>Proposals</h2>}><p>Proposals View under construction.</p></Card></div>;
-const TrainingsView = () => <div className="view-fade-in"><Card header={<h2>Trainings</h2>}><p>Trainings View under construction.</p></Card></div>;
-const ContactsView = () => <div className="view-fade-in"><Card header={<h2>Contacts</h2>}><p>Contacts View under construction.</p></Card></div>;
-const FinancesView = () => <div className="view-fade-in"><Card header={<h2>Finances</h2>}><p>Finances View under construction.</p></Card></div>;
-const DocsView = () => <div className="view-fade-in"><Card header={<h2>Documents</h2>}><p>Documents View under construction.</p></Card></div>;
+const ProposalsView = () => <div className="view-fade-in"><Card header={<h2>Pályázatok</h2>}><p>Pályázatok nézet fejlesztés alatt.</p></Card></div>;
+const TrainingsView = () => <div className="view-fade-in"><Card header={<h2>Képzések</h2>}><p>Képzések nézet fejlesztés alatt.</p></Card></div>;
+const ContactsView = () => <div className="view-fade-in"><Card header={<h2>Névjegyek</h2>}><p>Névjegyek nézet fejlesztés alatt.</p></Card></div>;
+
+const FinancesView = ({ transactions, budgets }: { transactions: Transaction[], budgets: Budget[] }) => {
+    const currentMonthTransactions = useMemo(() => {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        return transactions.filter(t => {
+            const tDate = new Date(t.date);
+            return tDate.getFullYear() === currentYear && tDate.getMonth() === currentMonth;
+        });
+    }, [transactions]);
+
+    const { income, expense, balance } = useMemo(() => {
+        const incomeVal = currentMonthTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        const expenseVal = currentMonthTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + t.amount, 0); // amounts are negative
+        return { income: incomeVal, expense: Math.abs(expenseVal), balance: incomeVal + expenseVal };
+    }, [currentMonthTransactions]);
+
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(amount);
+    };
+
+    const getSpentForBudget = (category: FinancialCategory) => {
+        return Math.abs(currentMonthTransactions
+            .filter(t => t.type === 'expense' && t.category === category)
+            .reduce((sum, t) => sum + t.amount, 0));
+    };
+
+    return (
+        <div className="view-fade-in">
+            <div className="view-header"><h2>Pénzügyek</h2></div>
+            <div className="finances-grid">
+                <Card className="summary-card income">
+                    <h4>Havi Bevétel</h4>
+                    <p className="summary-amount">{formatCurrency(income)}</p>
+                </Card>
+                <Card className="summary-card expense">
+                    <h4>Havi Kiadás</h4>
+                    <p className="summary-amount">{formatCurrency(expense)}</p>
+                </Card>
+                <Card className="summary-card balance">
+                    <h4>Egyenleg</h4>
+                    <p className="summary-amount">{formatCurrency(balance)}</p>
+                </Card>
+
+                <Card className="budget-card" header={<h4>Havi Költségvetés</h4>}>
+                    <div className="budget-trackers">
+                        {budgets.map(budget => {
+                            const spent = getSpentForBudget(budget.category);
+                            const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
+                            return (
+                                <div key={budget.id} className="budget-item">
+                                    <div className="budget-info">
+                                        <span>{budget.category}</span>
+                                        <span>{formatCurrency(spent)} / {formatCurrency(budget.amount)}</span>
+                                    </div>
+                                    <div className="progress-bar-background">
+                                        <div className="progress-bar" style={{ width: `${Math.min(progress, 100)}%` }}></div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </Card>
+                
+                <Card className="transactions-card" header={<h4>Legutóbbi Tranzakciók</h4>}>
+                    <ul className="transaction-list">
+                        {transactions.slice(0, 10).map(t => (
+                            <li key={t.id} className="transaction-item">
+                                <div className="transaction-details">
+                                    <Icon name={t.type === 'income' ? 'arrow_upward' : 'arrow_downward'} />
+                                    <div>
+                                        <p className="transaction-title">{t.title}</p>
+                                        <p className="transaction-date">{new Date(t.date).toLocaleDateString('hu-HU')}</p>
+                                    </div>
+                                </div>
+                                <p className={`transaction-amount ${t.type}`}>{formatCurrency(t.amount)}</p>
+                            </li>
+                        ))}
+                    </ul>
+                </Card>
+            </div>
+        </div>
+    );
+};
+
+const DocsView = () => <div className="view-fade-in"><Card header={<h2>Dokumentumok</h2>}><p>Dokumentumok nézet fejlesztés alatt.</p></Card></div>;
 
 
 const GeminiChatView = () => {
@@ -1177,7 +1266,7 @@ const App = () => {
             case 'proposals': return <ProposalsView />;
             case 'trainings': return <TrainingsView />;
             case 'contacts': return <ContactsView />;
-            case 'finances': return <FinancesView />;
+            case 'finances': return <FinancesView transactions={data.transactions} budgets={data.budgets} />;
             case 'docs': return <DocsView />;
             case 'gemini_chat': return <GeminiChatView />;
             case 'creative_tools': return <CreativeView />;
