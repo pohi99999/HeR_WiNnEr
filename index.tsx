@@ -43,7 +43,8 @@ interface PlannerEvent {
     id: string;
     title: string;
     date: string; // YYYY-MM-DD
-    time?: string;
+    time?: string; // HH:MM
+    duration?: number; // in minutes
     type: PlannerEventType;
     description?: string;
     source?: string;
@@ -238,11 +239,12 @@ const mockEmails: EmailMessage[] = [
 ];
 
 const mockPlannerEvents: PlannerEvent[] = [
-    { id: 'event-1', title: 'Csapatépítő', date: '2024-08-25', type: 'work' },
-    { id: 'event-2', title: 'Fogorvos', date: '2024-08-12', time: '14:00', type: 'personal' },
-    { id: 'event-3', title: 'Marketing meeting', date: '2024-08-06', time: '10:00', type: 'meeting', source: 'proj-2' },
+    { id: 'event-1', title: 'Csapatépítő', date: '2024-08-25', type: 'work', duration: 480 },
+    { id: 'event-2', title: 'Fogorvos', date: '2024-08-12', time: '14:00', type: 'personal', duration: 45 },
+    { id: 'event-3', title: 'Marketing meeting', date: '2024-08-06', time: '10:00', type: 'meeting', source: 'proj-2', duration: 90 },
     { id: 'event-4', title: 'Szerver tesztelés határidő', date: '2024-08-05', type: 'deadline', source: 'task-4' },
-    { id: 'event-5', title: 'Pályázat beadás', date: '2024-09-15', type: 'proposal_deadline', source: 'prop-1'}
+    { id: 'event-5', title: 'Pályázat beadás', date: '2024-09-15', type: 'proposal_deadline', source: 'prop-1'},
+    { id: 'event-6', title: 'React Képzés', date: new Date().toISOString().split('T')[0], time: '09:00', type: 'training_session', duration: 180 }
 ];
 
 // --- AI & GEMINI SETUP ---
@@ -391,7 +393,6 @@ const App: React.FC = () => {
         const props = { ...dataContextValue }; // Pass all data and handlers
         switch (activeView) {
             case 'dashboard':
-// FIX START: Added React.FC<any> to component definitions to resolve prop type errors. This is part of a larger set of fixes to make all view components compliant.
                 return <DashboardView {...props} />;
             case 'planner':
                 return <PlannerView {...props} />;
@@ -417,7 +418,6 @@ const App: React.FC = () => {
                 return <CreativeView {...props} />;
             case 'meeting-assistant':
                 return <MeetingAssistantView {...props} />;
-// FIX END: Added React.FC<any> to component definitions to resolve prop type errors. This is part of a larger set of fixes to make all view components compliant.
             default:
                 return <div>Nézet nem található.</div>;
         }
@@ -450,7 +450,7 @@ const App: React.FC = () => {
     );
 };
 
-const NotificationCenter = ({ notifications }: { notifications: Notification[] }) => {
+const NotificationCenter: React.FC<{ notifications: Notification[] }> = ({ notifications }) => {
     return (
         <div className="notification-center">
             {notifications.map((notif, index) => (
@@ -493,18 +493,18 @@ const Sidebar: React.FC<any> = ({ activeView, setActiveView, isCollapsed, toggle
         }
     ];
 
-    const handleNavClick = (viewId) => {
+    const handleNavClick = (viewId: string) => {
         setActiveView(viewId);
         closeMobileNav();
     };
 
-    const toggleSection = (sectionId) => {
+    const toggleSection = (sectionId: string) => {
         setOpenSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
     };
 
-    const renderNavItem = (item) => {
+    const renderNavItem = (item: NavItem) => {
         if (item.subItems) {
-            const isOpen = openSections[item.id] || false;
+            const isOpen = openSections[item.id as keyof typeof openSections] || false;
             return (
                 <li key={item.id}>
                     <button className={`nav-link nav-section-header ${isOpen ? 'open' : ''}`} onClick={() => toggleSection(item.id)}>
@@ -597,16 +597,16 @@ const GlobalHeader: React.FC<any> = ({ toggleMobileNav }) => {
 
 const DashboardView: React.FC<any> = ({ tasks, emails, projects, plannerEvents, proposals }) => {
     const upcomingEvents = plannerEvents
-        .filter(e => new Date(e.date) >= new Date())
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .filter((e: PlannerEvent) => new Date(e.date) >= new Date())
+        .sort((a: PlannerEvent, b: PlannerEvent) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .slice(0, 3);
 
-    const activeProposals = proposals.filter(p => p.status === 'Készül' || p.status === 'Beadva');
+    const activeProposals = proposals.filter((p: Proposal) => p.status === 'Készül' || p.status === 'Beadva');
 
     const dashboardItems = [
         { id: 'tasks', size: 'large', title: 'Gyors Feladatok', content: (
             <ul className="quick-list">
-                {tasks.filter(t => t.status !== 'Kész').slice(0, 5).map((task, index) => (
+                {tasks.filter((t: TaskItem) => t.status !== 'Kész').slice(0, 5).map((task: TaskItem, index: number) => (
                     <li key={task.id} className="stagger-item" style={{ animationDelay: `${index * 50}ms` }}>
                         <span className="task-title">{task.title}</span>
                         <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
@@ -616,7 +616,7 @@ const DashboardView: React.FC<any> = ({ tasks, emails, projects, plannerEvents, 
         )},
         { id: 'agenda', size: 'medium', title: 'Közelgő Események', content: (
             <ul className="quick-list">
-                 {upcomingEvents.map((event, index) => (
+                 {upcomingEvents.map((event: PlannerEvent, index: number) => (
                     <li key={event.id} className="stagger-item" style={{ animationDelay: `${index * 50}ms` }}>
                         <span>{event.title}</span>
                         <span>{new Date(event.date).toLocaleDateString()}</span>
@@ -626,7 +626,7 @@ const DashboardView: React.FC<any> = ({ tasks, emails, projects, plannerEvents, 
         )},
         { id: 'emails', size: 'medium', title: 'Legutóbbi Emailek', content: (
              <ul className="quick-list email-list">
-                {emails.filter(e => e.category === 'inbox' && !e.read).slice(0, 4).map((email, index) => (
+                {emails.filter((e: EmailMessage) => e.category === 'inbox' && !e.read).slice(0, 4).map((email: EmailMessage, index: number) => (
                     <li key={email.id} className="stagger-item" style={{ animationDelay: `${index * 50}ms` }}>
                         <span className="email-sender">{email.sender}</span>
                         <span className="email-subject">{email.subject}</span>
@@ -636,7 +636,7 @@ const DashboardView: React.FC<any> = ({ tasks, emails, projects, plannerEvents, 
         )},
          { id: 'proposals', size: 'full', title: 'Aktív Pályázatok', content: (
              <div className="proposals-overview">
-                 {activeProposals.map((prop, index) => (
+                 {activeProposals.map((prop: Proposal, index: number) => (
                      <div key={prop.id} className="proposal-summary-card stagger-item" style={{ animationDelay: `${index * 50}ms` }}>
                          <h4>{prop.title}</h4>
                          <p>Beadási határidő: {prop.submissionDeadline}</p>
@@ -670,19 +670,20 @@ const DashboardView: React.FC<any> = ({ tasks, emails, projects, plannerEvents, 
     );
 };
 
-const PlannerView: React.FC<any> = ({ plannerEvents, tasks }) => {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [viewMode, setViewMode] = useState('month'); // month, week, day
+// --- PLANNER VIEW & SUBCOMPONENTS ---
 
+const MonthCalendarView: React.FC<any> = ({ currentDate, plannerEvents, tasks }) => {
     const calendarData = useMemo(() => {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
         const firstDayOfMonth = new Date(year, month, 1);
         const lastDayOfMonth = new Date(year, month + 1, 0);
         const startDate = new Date(firstDayOfMonth);
-        startDate.setDate(startDate.getDate() - firstDayOfMonth.getDay());
+        startDate.setDate(startDate.getDate() - (firstDayOfMonth.getDay() === 0 ? 6 : firstDayOfMonth.getDay() - 1)); // Start on Monday
         const endDate = new Date(lastDayOfMonth);
-        endDate.setDate(endDate.getDate() + (6 - lastDayOfMonth.getDay()));
+        if (lastDayOfMonth.getDay() !== 0) {
+            endDate.setDate(endDate.getDate() + (7 - lastDayOfMonth.getDay()));
+        }
         
         const days = [];
         let day = new Date(startDate);
@@ -694,45 +695,190 @@ const PlannerView: React.FC<any> = ({ plannerEvents, tasks }) => {
         return days;
     }, [currentDate]);
 
-    const eventsForDate = (date) => {
+    const eventsForDate = (date: Date) => {
         const dateStr = date.toISOString().split('T')[0];
-        const pEvents = plannerEvents.filter(e => e.date === dateStr);
-        const tEvents = tasks.filter(t => t.dueDate === dateStr).map(t => ({...t, type: 'deadline'}));
+        const pEvents = plannerEvents.filter((e: PlannerEvent) => e.date === dateStr);
+        const tEvents = tasks.filter((t: TaskItem) => t.dueDate === dateStr).map((t: TaskItem) => ({...t, type: 'deadline', id: `task-${t.id}`}));
         return [...pEvents, ...tEvents];
+    };
+    
+    return (
+        <div className="calendar-container card">
+            <div className="calendar-header">
+                {['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat', 'Vasárnap'].map(day => <div key={day} className="day-header">{day}</div>)}
+            </div>
+            <div className="calendar-body">
+                {calendarData.map((day, index) => (
+                    <div key={index} className={`day-cell ${day.getMonth() !== currentDate.getMonth() ? 'other-month' : ''}`}>
+                        <span className="day-number">{day.getDate()}</span>
+                        <div className="events-container">
+                            {eventsForDate(day).map(event => (
+                                <div key={event.id} className={`event-pill event-type-${event.type}`}>
+                                    <span className="event-pill-dot"></span>
+                                    <span className="event-title">{event.title}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const WeekCalendarView: React.FC<any> = ({ currentDate, plannerEvents, tasks }) => {
+    const weekDays = useMemo(() => {
+        const startOfWeek = new Date(currentDate);
+        const dayOfWeek = currentDate.getDay(); // 0 (Sun) - 6 (Sat)
+        const diff = currentDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // adjust when day is sunday
+        startOfWeek.setDate(diff);
+
+        return Array.from({ length: 7 }).map((_, i) => {
+            const day = new Date(startOfWeek);
+            day.setDate(day.getDate() + i);
+            return day;
+        });
+    }, [currentDate]);
+
+    const eventsByDay = useMemo(() => {
+        const allEvents: (PlannerEvent | (TaskItem & {type: string, date: string, time: undefined, duration: number}))[] = [
+            ...plannerEvents,
+            ...tasks.filter((t: TaskItem) => t.dueDate).map((t: TaskItem) => ({...t, type: 'deadline', id: `task-${t.id}`, date: t.dueDate!, time: undefined, duration: 60 }))
+        ];
+        const grouped: {[key: string]: any[]} = {};
+        weekDays.forEach(day => {
+            const dateStr = day.toISOString().split('T')[0];
+            grouped[dateStr] = allEvents.filter(e => e.date === dateStr);
+        });
+        return grouped;
+    }, [weekDays, plannerEvents, tasks]);
+
+    const timeToPosition = (time?: string) => {
+        if (!time) return 0;
+        const [hours, minutes] = time.split(':').map(Number);
+        return (hours * 60 + minutes) / (24 * 60) * 100;
+    };
+
+    const durationToHeight = (duration?: number) => {
+        return ((duration || 60) / (24 * 60)) * 100;
+    };
+
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+
+    return (
+        <div className="time-grid-view card">
+            <div className="time-grid-header">
+                <div className="time-gutter"></div>
+                {weekDays.map(day => (
+                    <div key={day.toString()} className="day-header-cell">
+                        <span className="day-name">{day.toLocaleDateString('hu-HU', { weekday: 'short' })}</span>
+                        <span className="day-date">{day.getDate()}</span>
+                    </div>
+                ))}
+            </div>
+            <div className="time-grid-body-scroll">
+                <div className="time-grid-body">
+                    <div className="time-gutter">
+                        {hours.map(hour => <div key={hour} className="time-label">{`${hour.toString().padStart(2, '0')}:00`}</div>)}
+                    </div>
+                    {weekDays.map(day => {
+                        const dateStr = day.toISOString().split('T')[0];
+                        const dayEvents = eventsByDay[dateStr] || [];
+                        const timedEvents = dayEvents.filter(e => e.time);
+                        const allDayEvents = dayEvents.filter(e => !e.time);
+                        return (
+                            <div key={dateStr} className="day-column">
+                                <div className="all-day-events-container">
+                                    {allDayEvents.map(event => (
+                                        <div key={event.id} className={`event-pill event-type-${event.type}`}>{event.title}</div>
+                                    ))}
+                                </div>
+                                <div className="timed-events-container">
+                                    {timedEvents.map(event => (
+                                        <div 
+                                            key={event.id}
+                                            className={`calendar-event-block event-type-${event.type}`}
+                                            style={{ 
+                                                top: `${timeToPosition(event.time)}%`,
+                                                height: `${durationToHeight(event.duration)}%`
+                                            }}
+                                        >
+                                            <strong className="event-block-title">{event.title}</strong>
+                                            <span className="event-block-time">{event.time}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const DayCalendarView: React.FC<any> = ({ currentDate, plannerEvents, tasks }) => {
+    // This can be a simplified version of WeekCalendarView, showing only one day.
+    // To avoid code duplication, we can reuse WeekCalendarView with a single day.
+    // For a more distinct UI, we create a separate component.
+
+    const allEvents = useMemo(() => {
+         const dateStr = currentDate.toISOString().split('T')[0];
+         const pEvents = plannerEvents.filter((e: PlannerEvent) => e.date === dateStr);
+         const tEvents = tasks.filter((t: TaskItem) => t.dueDate === dateStr).map((t: TaskItem) => ({...t, type: 'deadline', id: `task-${t.id}`, date: t.dueDate!, time: undefined, duration: 60 }));
+         return [...pEvents, ...tEvents];
+    }, [currentDate, plannerEvents, tasks]);
+
+    const timedEvents = allEvents.filter(e => e.time);
+    const allDayEvents = allEvents.filter(e => !e.time);
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    
+    const timeToPosition = (time?: string) => {
+        if (!time) return 0;
+        const [hours, minutes] = time.split(':').map(Number);
+        return (hours * 60 + minutes) / (24 * 60) * 100;
+    };
+
+    const durationToHeight = (duration?: number) => {
+        return ((duration || 60) / (24 * 60)) * 100;
     };
 
     return (
-        <div className="planner-view">
-            <div className="view-header">
-                <h2>Naptár</h2>
-                <div className="calendar-controls">
-                    <button className="btn btn-secondary" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}>
-                        <span className="material-symbols-outlined">chevron_left</span>
-                    </button>
-                    <h3>{currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
-                     <button className="btn btn-secondary" onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}>
-                        <span className="material-symbols-outlined">chevron_right</span>
-                    </button>
+        <div className="time-grid-view day-view card">
+             <div className="time-grid-header">
+                <div className="time-gutter"></div>
+                <div className="day-header-cell">
+                    <span className="day-name">{currentDate.toLocaleDateString('hu-HU', { weekday: 'long' })}</span>
+                    <span className="day-date">{currentDate.getDate()}</span>
                 </div>
             </div>
-            <div className="calendar-container card">
-                <div className="calendar-header">
-                    {['Vas', 'Hét', 'Kedd', 'Sze', 'Csüt', 'Pén', 'Szom'].map(day => <div key={day} className="day-header">{day}</div>)}
-                </div>
-                <div className="calendar-body">
-                    {calendarData.map((day, index) => (
-                        <div key={index} className={`day-cell ${day.getMonth() !== currentDate.getMonth() ? 'other-month' : ''}`}>
-                            <span className="day-number">{day.getDate()}</span>
-                            <div className="events-container">
-                                {eventsForDate(day).map(event => (
-                                    <div key={event.id} className={`event-pill event-type-${event.type}`}>
-                                        <span className="event-pill-dot"></span>
-                                        <span className="event-title">{event.title}</span>
-                                    </div>
-                                ))}
-                            </div>
+             <div className="time-grid-body-scroll">
+                <div className="time-grid-body">
+                    <div className="time-gutter">
+                         {hours.map(hour => <div key={hour} className="time-label">{`${hour.toString().padStart(2, '0')}:00`}</div>)}
+                    </div>
+                     <div className="day-column">
+                        <div className="all-day-events-container">
+                            {allDayEvents.map(event => (
+                                <div key={event.id} className={`event-pill event-type-${event.type}`}>{event.title}</div>
+                            ))}
                         </div>
-                    ))}
+                        <div className="timed-events-container">
+                            {timedEvents.map(event => (
+                                <div 
+                                    key={event.id}
+                                    className={`calendar-event-block event-type-${event.type}`}
+                                    style={{ 
+                                        top: `${timeToPosition(event.time)}%`,
+                                        height: `${durationToHeight(event.duration)}%`
+                                    }}
+                                >
+                                    <strong className="event-block-title">{event.title}</strong>
+                                    <span className="event-block-time">{event.time}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -740,7 +886,77 @@ const PlannerView: React.FC<any> = ({ plannerEvents, tasks }) => {
 };
 
 
-const TaskCard = ({ task, onTaskUpdate, onTaskDelete, isDragging, style }: { task: TaskItem, onTaskUpdate: (task: TaskItem) => void, onTaskDelete: (id: string) => void, isDragging: boolean, style?: React.CSSProperties }) => {
+const PlannerView: React.FC<any> = ({ plannerEvents, tasks }) => {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
+
+    const handlePrev = () => {
+        const newDate = new Date(currentDate);
+        if (viewMode === 'month') newDate.setMonth(newDate.getMonth() - 1);
+        else if (viewMode === 'week') newDate.setDate(newDate.getDate() - 7);
+        else newDate.setDate(newDate.getDate() - 1);
+        setCurrentDate(newDate);
+    };
+
+    const handleNext = () => {
+        const newDate = new Date(currentDate);
+        if (viewMode === 'month') newDate.setMonth(newDate.getMonth() + 1);
+        else if (viewMode === 'week') newDate.setDate(newDate.getDate() + 7);
+        else newDate.setDate(newDate.getDate() + 1);
+        setCurrentDate(newDate);
+    };
+    
+    const handleToday = () => {
+        setCurrentDate(new Date());
+    };
+
+    const getHeaderText = () => {
+        if (viewMode === 'month') {
+            return currentDate.toLocaleDateString('hu-HU', { month: 'long', year: 'numeric' });
+        }
+        if (viewMode === 'week') {
+            const startOfWeek = new Date(currentDate);
+            const dayOfWeek = currentDate.getDay();
+            const diff = currentDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+            startOfWeek.setDate(diff);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            return `${startOfWeek.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' })}`;
+        }
+        return currentDate.toLocaleDateString('hu-HU', { year: 'numeric', month: 'long', day: 'numeric' });
+    };
+
+    return (
+        <div className="planner-view">
+            <div className="view-header">
+                <h2>Naptár</h2>
+                <div className="view-actions">
+                     <div className="calendar-controls">
+                        <button className="btn btn-secondary" onClick={handleToday}>Ma</button>
+                        <button className="btn btn-secondary btn-icon" onClick={handlePrev}>
+                            <span className="material-symbols-outlined">chevron_left</span>
+                        </button>
+                        <h3 className="calendar-current-date">{getHeaderText()}</h3>
+                        <button className="btn btn-secondary btn-icon" onClick={handleNext}>
+                            <span className="material-symbols-outlined">chevron_right</span>
+                        </button>
+                    </div>
+                    <div className="toggle-buttons">
+                        <button className={`btn ${viewMode === 'month' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setViewMode('month')}>Hónap</button>
+                        <button className={`btn ${viewMode === 'week' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setViewMode('week')}>Hét</button>
+                        <button className={`btn ${viewMode === 'day' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setViewMode('day')}>Nap</button>
+                    </div>
+                </div>
+            </div>
+            {viewMode === 'month' && <MonthCalendarView currentDate={currentDate} plannerEvents={plannerEvents} tasks={tasks} />}
+            {viewMode === 'week' && <WeekCalendarView currentDate={currentDate} plannerEvents={plannerEvents} tasks={tasks} />}
+            {viewMode === 'day' && <DayCalendarView currentDate={currentDate} plannerEvents={plannerEvents} tasks={tasks} />}
+        </div>
+    );
+};
+
+// FIX: Use isDragging from useDrag hook and simplify ref usage.
+const TaskCard: React.FC<{ task: TaskItem, onTaskUpdate: (task: TaskItem) => void, onTaskDelete: (id: string) => void, style?: React.CSSProperties }> = ({ task, onTaskUpdate, onTaskDelete, style }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -753,12 +969,12 @@ const TaskCard = ({ task, onTaskUpdate, onTaskDelete, isDragging, style }: { tas
         },
     });
     
-    const [{ isDragging: isDrag }, drag, preview] = useDrag({
+    const [{ isDragging }, drag, preview] = useDrag({
         type: 'TASK',
         item: () => {
             return { id: task.id, status: task.status };
         },
-        collect: (monitor: any) => ({
+        collect: (monitor) => ({
             isDragging: monitor.isDragging(),
         }),
     });
@@ -766,9 +982,7 @@ const TaskCard = ({ task, onTaskUpdate, onTaskDelete, isDragging, style }: { tas
     drag(drop(ref));
 
     return (
-// FIX START: Wrapped the react-dnd connector in a callback function to resolve TypeScript type mismatch with the 'ref' prop.
-        <div ref={(node) => preview(node)} style={{ ...style, opacity: isDragging ? 0.5 : 1 }} className={`task-card card ${isExpanded ? 'expanded' : ''} stagger-item`}>
-{/* FIX END: Wrapped the react-dnd connector in a callback function to resolve TypeScript type mismatch with the 'ref' prop. */}
+        <div ref={preview} style={{ ...style, opacity: isDragging ? 0.5 : 1 }} className={`task-card card ${isExpanded ? 'expanded' : ''} stagger-item`}>
             <div ref={ref} data-handler-id={handlerId}>
                 <div className="task-card-header">
                     <h4 className="task-title">{task.title}</h4>
@@ -814,14 +1028,14 @@ const TasksView: React.FC<any> = ({ tasks, handleAddTask, handleUpdateTask, hand
 
     const statuses: TaskStatus[] = ['Teendő', 'Folyamatban', 'Kész', 'Blokkolt'];
 
-    const moveTask = (taskId, newStatus) => {
-        const task = tasks.find(t => t.id === taskId);
+    const moveTask = (taskId: string, newStatus: TaskStatus) => {
+        const task = tasks.find((t: TaskItem) => t.id === taskId);
         if (task) {
             handleUpdateTask({ ...task, status: newStatus });
         }
     };
 
-    const filteredTasks = tasks.filter(task => {
+    const filteredTasks = tasks.filter((task: TaskItem) => {
         if (filter === 'all') return true;
         return task.priority.toLowerCase() === filter;
     });
@@ -843,13 +1057,12 @@ const TasksView: React.FC<any> = ({ tasks, handleAddTask, handleUpdateTask, hand
             </div>
             {viewMode === 'list' && (
                 <div className="tasks-list-container">
-                    {filteredTasks.map((task, index) => (
+                    {filteredTasks.map((task: TaskItem, index: number) => (
                          <TaskCard
                             key={task.id}
                             task={task}
                             onTaskUpdate={handleUpdateTask}
                             onTaskDelete={handleDeleteTask}
-                            isDragging={false}
                             style={{ animationDelay: `${index * 50}ms` }}
                         />
                     ))}
@@ -862,7 +1075,7 @@ const TasksView: React.FC<any> = ({ tasks, handleAddTask, handleUpdateTask, hand
                             <KanbanColumn 
                                 key={status} 
                                 status={status} 
-                                tasks={tasks.filter(t => t.status === status)}
+                                tasks={tasks.filter((t: TaskItem) => t.status === status)}
                                 onMoveTask={moveTask}
                                 onTaskUpdate={handleUpdateTask}
                                 onTaskDelete={handleDeleteTask}
@@ -886,20 +1099,18 @@ const KanbanColumn: React.FC<any> = ({ status, tasks, onMoveTask, onTaskUpdate, 
     }));
 
     return (
-// FIX START: Wrapped the react-dnd connector in a callback function to resolve TypeScript type mismatch with the 'ref' prop.
-        <div ref={(node) => drop(node)} className={`kanban-column card ${isOver ? 'is-over' : ''}`}>
-{/* FIX END: Wrapped the react-dnd connector in a callback function to resolve TypeScript type mismatch with the 'ref' prop. */}
+        // FIX: Simplify dnd drop target ref usage.
+        <div ref={drop} className={`kanban-column card ${isOver ? 'is-over' : ''}`}>
             <div className="kanban-column-header">
                 <h3>{status} ({tasks.length})</h3>
             </div>
             <div className="kanban-column-body">
-                {tasks.map((task, index) => (
+                {tasks.map((task: TaskItem, index: number) => (
                     <TaskCard 
                         key={task.id} 
                         task={task}
                         onTaskUpdate={onTaskUpdate}
                         onTaskDelete={onTaskDelete}
-                        isDragging={false} /* This would need more state mgmt to be accurate */
                         style={{ animationDelay: `${index * 50}ms` }}
                     />
                 ))}
@@ -910,9 +1121,9 @@ const KanbanColumn: React.FC<any> = ({ status, tasks, onMoveTask, onTaskUpdate, 
 
 const EmailView: React.FC<any> = ({ emails }) => {
     const [activeCategory, setActiveCategory] = useState('inbox');
-    const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(emails.find(e => e.category === 'inbox') || null);
+    const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(emails.find((e: EmailMessage) => e.category === 'inbox') || null);
 
-    const filteredEmails = emails.filter(e => e.category === activeCategory);
+    const filteredEmails = emails.filter((e: EmailMessage) => e.category === activeCategory);
 
     return (
         <div className="email-view-layout card">
@@ -926,7 +1137,7 @@ const EmailView: React.FC<any> = ({ emails }) => {
                 </ul>
             </div>
             <div className="email-list-pane">
-                 {filteredEmails.map((email, index) => (
+                 {filteredEmails.map((email: EmailMessage, index: number) => (
                     <div 
                         key={email.id} 
                         className={`email-item ${selectedEmail?.id === email.id ? 'selected' : ''} stagger-item`}
@@ -961,10 +1172,10 @@ const EmailView: React.FC<any> = ({ emails }) => {
 
 const ProjectsView: React.FC<any> = ({ projects, tasks }) => {
 
-    const getProjectProgress = (projectId) => {
-        const projectTasks = tasks.filter(t => t.projectId === projectId);
+    const getProjectProgress = (projectId: string) => {
+        const projectTasks = tasks.filter((t: TaskItem) => t.projectId === projectId);
         if (projectTasks.length === 0) return 0;
-        const completedTasks = projectTasks.filter(t => t.status === 'Kész').length;
+        const completedTasks = projectTasks.filter((t: TaskItem) => t.status === 'Kész').length;
         return Math.round((completedTasks / projectTasks.length) * 100);
     };
 
@@ -980,7 +1191,7 @@ const ProjectsView: React.FC<any> = ({ projects, tasks }) => {
                 </div>
             </div>
             <div className="projects-grid">
-                {projects.map((project, index) => (
+                {projects.map((project: Project, index: number) => (
                     <div className="project-card card stagger-item" key={project.id} style={{ animationDelay: `${index * 50}ms` }}>
                         <div className="project-card-header">
                             <h3>{project.title}</h3>
@@ -1006,7 +1217,7 @@ const ProjectsView: React.FC<any> = ({ projects, tasks }) => {
 };
 
 const FinancesView: React.FC<any> = ({ transactions, budgets }) => {
-    const summary = transactions.reduce((acc, curr) => {
+    const summary = transactions.reduce((acc: {income: number, expense: number, balance: number}, curr: Transaction) => {
         if (curr.type === 'income') acc.income += curr.amount;
         else acc.expense += curr.amount;
         acc.balance = acc.income + acc.expense;
@@ -1014,8 +1225,8 @@ const FinancesView: React.FC<any> = ({ transactions, budgets }) => {
     }, { income: 0, expense: 0, balance: 0 });
 
     const expenseByCategory = transactions
-        .filter(t => t.type === 'expense')
-        .reduce((acc, curr) => {
+        .filter((t: Transaction) => t.type === 'expense')
+        .reduce((acc: {[key: string]: number}, curr: Transaction) => {
             acc[curr.category] = (acc[curr.category] || 0) + Math.abs(curr.amount);
             return acc;
         }, {});
@@ -1039,7 +1250,7 @@ const FinancesView: React.FC<any> = ({ transactions, budgets }) => {
                 <div className="transactions-list-container card stagger-item" style={{animationDelay: '200ms'}}>
                      <h3>Legutóbbi tranzakciók</h3>
                      <ul>
-                         {transactions.slice(0, 5).map((t, index) => (
+                         {transactions.slice(0, 5).map((t: Transaction, index: number) => (
                              <li key={t.id} className="stagger-item" style={{ animationDelay: `${250 + index * 50}ms` }}>
                                  <span>{t.title}</span>
                                  <span className={t.type}>{t.amount.toLocaleString()} Ft</span>
@@ -1072,7 +1283,7 @@ const ProposalsView: React.FC<any> = ({ proposals, tasks }) => {
                         <div className="kanban-column card" key={status}>
                             <div className="kanban-column-header"><h3>{status}</h3></div>
                             <div className="kanban-column-body">
-                                {proposals.filter(p => p.status === status).map((prop, index) => (
+                                {proposals.filter((p: Proposal) => p.status === status).map((prop: Proposal, index: number) => (
                                     <div className="proposal-card card stagger-item" key={prop.id} style={{ animationDelay: `${index * 50}ms` }}>
                                         <h4>{prop.title}</h4>
                                         <p>{prop.funder}</p>
@@ -1101,7 +1312,7 @@ const DocsView: React.FC<any> = ({ docs, handleAddDoc }) => {
                 </button>
             </div>
             <div className="docs-grid">
-                {docs.map((doc, index) => (
+                {docs.map((doc: DocItem, index: number) => (
                     <div className="doc-card card stagger-item" key={doc.id} style={{ animationDelay: `${index * 50}ms` }}>
                         <div className="doc-card-header">
                             <span className="material-symbols-outlined">
@@ -1125,7 +1336,7 @@ const ContactsView: React.FC<any> = ({ contacts }) => {
     return (
          <div className="contacts-view-layout card">
             <div className="contact-list-pane">
-                 {contacts.map((contact, index) => (
+                 {contacts.map((contact: Contact, index: number) => (
                      <div 
                         key={contact.id} 
                         className={`contact-item ${selectedContact?.id === contact.id ? 'selected' : ''} stagger-item`}
@@ -1174,7 +1385,7 @@ const TrainingView: React.FC<any> = ({ trainings }) => {
                 <h2>Képzések</h2>
             </div>
             <div className="training-list">
-                 {trainings.map((item, index) => (
+                 {trainings.map((item: TrainingItem, index: number) => (
                     <div key={item.id} className="training-item-card card stagger-item" style={{ animationDelay: `${index * 50}ms` }}>
                          <div className="training-item-header">
                             <h3>{item.title}</h3>
@@ -1201,14 +1412,12 @@ const GeminiChatView: React.FC<any> = ({ handleAddTask, handleAddEvent, handleSe
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-// FIX START: The 'tools' parameter must be nested inside a 'config' object for ai.chats.create.
         const chatInstance = ai.chats.create({
             model: model,
             config: {
                 tools: tools,
             },
         });
-// FIX END: The 'tools' parameter must be nested inside a 'config' object for ai.chats.create.
         setChat(chatInstance);
     }, []);
 
@@ -1218,7 +1427,7 @@ const GeminiChatView: React.FC<any> = ({ handleAddTask, handleAddEvent, handleSe
 
     useEffect(scrollToBottom, [messages]);
     
-    const handleFunctionCall = async (functionCall) => {
+    const handleFunctionCall = async (functionCall: { name: string; args: any; }) => {
         const { name, args } = functionCall;
         let result;
         let userMessage = "";
@@ -1240,7 +1449,7 @@ const GeminiChatView: React.FC<any> = ({ handleAddTask, handleAddEvent, handleSe
                 userMessage = `Ismeretlen parancs: ${name}`;
                 addNotification(`Ismeretlen parancs: ${name}`, 'error');
             }
-             if(result.success) {
+             if((result as {success: boolean}).success) {
                 setMessages(prev => [...prev, { id: generateId('bot'), text: userMessage, sender: 'bot', isAction: true }]);
             }
             return {
@@ -1249,7 +1458,7 @@ const GeminiChatView: React.FC<any> = ({ handleAddTask, handleAddEvent, handleSe
                     response: result
                 }
             };
-        } catch (e) {
+        } catch (e: any) {
             console.error("Function call error:", e);
             addNotification(`Hiba a parancs végrehajtása közben: ${name}`, 'error');
             return {
@@ -1300,9 +1509,7 @@ const GeminiChatView: React.FC<any> = ({ handleAddTask, handleAddEvent, handleSe
                     functionResponses.push(responsePart);
                 }
 
-// FIX START: The 'message' parameter for sendMessageStream should be the array of parts directly, not wrapped in an object with a 'parts' key.
                 const finalResult = await chat.sendMessageStream({ message: functionResponses });
-// FIX END: The 'message' parameter for sendMessageStream should be the array of parts directly, not wrapped in an object with a 'parts' key.
                 let finalAccumulatedText = "";
                 for await (const chunk of finalResult) {
                      finalAccumulatedText += chunk.text;
@@ -1395,75 +1602,254 @@ const CreativeView: React.FC<any> = ({ handleAddDoc }) => {
             }
         } catch (e) {
             console.error("Image generation error:", e);
-            setError('Hiba történt a kép generálása során.');
+            setError('Hiba történt a kép generálása közben. Kérjük, próbálja újra később.');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const saveImage = (imageData: string) => {
-        handleAddDoc({
-            type: 'image',
-            title: `AI Kép: ${prompt.substring(0, 20)}...`,
-            content: imageData
-        });
-    };
-
     return (
-        <div className="creative-view-container">
-            <div className="generation-form-card card">
-                <h3>Képgenerátor</h3>
-                <p>Írja le, milyen képet szeretne létrehozni.</p>
-                <div className="form-group">
-                    <textarea
-                        className="form-textarea"
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="Pl.: Egy fotorealisztikus kép egy vörös macskáról, amint egy laptopon dolgozik egy kávézóban."
-                    />
-                </div>
-                <button className="btn btn-primary" onClick={generateImage} disabled={isLoading}>
-                    {isLoading ? 'Generálás...' : 'Kép generálása'}
-                </button>
+        <div className="creative-view">
+            <div className="view-header">
+                <h2>Kreatív Eszközök</h2>
+                <p>Keltse életre ötleteit az Imagen 4 segítségével.</p>
             </div>
-            <div className="image-results-card card">
-                 <h3>Eredmények</h3>
-                {isLoading && <div className="loader">Kép generálása, ez eltarthat egy ideig...</div>}
-                {error && <div className="error-message">{error}</div>}
-                <div className="image-results-grid">
-                    {images.map((imgSrc, index) => (
-                        <div key={index} className="image-result-item">
-                            <img src={imgSrc} alt={`Generated image for: ${prompt}`} />
-                             <button className="btn btn-secondary" onClick={() => saveImage(imgSrc)}>Mentés a dokumentumokba</button>
-                        </div>
-                    ))}
+            <div className="creative-view-container">
+                <div className="generation-form-card card">
+                    <div className="card-header">
+                       <h3>Képgenerálás</h3>
+                    </div>
+                    <div className="card-body">
+                        <form onSubmit={(e) => { e.preventDefault(); generateImage(); }} className="generation-form">
+                            <textarea
+                                className="form-textarea"
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                placeholder="Írja le a képet, amit szeretne létrehozni... (pl. 'Egy űrhajós lovagol egy pszichedelikus lovon a Holdon, digitális festmény stílusban')"
+                                rows={5}
+                                disabled={isLoading}
+                            />
+                            <button type="submit" className="btn btn-primary" disabled={isLoading} style={{width: '100%', marginTop: '16px'}}>
+                                {isLoading ? 'Generálás...' : 'Generálás'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <div className="image-results-card card">
+                    <div className="card-header">
+                       <h3>Eredmény</h3>
+                    </div>
+                     <div className="card-body">
+                        {isLoading && <div className="loading-spinner"><div></div><div></div><div></div><div></div></div>}
+                        {error && <div className="error-message">{error}</div>}
+                        {images.length > 0 && !isLoading && (
+                            <div className="image-results-grid">
+                                {images.map((imgSrc, index) => (
+                                    <div key={index} className="generated-image-container">
+                                        <img src={imgSrc} alt={`Generated image for: ${prompt}`} />
+                                        <button
+                                            className="btn btn-secondary btn-sm save-btn"
+                                            onClick={() => handleAddDoc({
+                                                type: 'image',
+                                                title: `AI Kép: ${prompt.substring(0, 20)}...`,
+                                                content: imgSrc
+                                            })}
+                                        >
+                                            <span className="material-symbols-outlined">save</span> Mentés a dokumentumokba
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                         {!isLoading && !error && images.length === 0 && (
+                            <div className="placeholder-text">Itt fog megjelenni a generált kép.</div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
 
+
 const MeetingAssistantView: React.FC<any> = () => {
-    // Placeholder state
+    const [isListening, setIsListening] = useState(false);
+    const [transcript, setTranscript] = useState('');
+    const [interimTranscript, setInterimTranscript] = useState('');
+    const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+    const [analysisResult, setAnalysisResult] = useState<{ summary: string; action_items: string[]; sentiment: string; } | null>(null);
+
+    const recognitionRef = useRef<any>(null);
+
+    useEffect(() => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            console.error("Speech Recognition not supported by this browser.");
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'hu-HU';
+
+        recognition.onresult = (event: any) => {
+            let final_transcript = '';
+            let interim_transcript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    final_transcript += event.results[i][0].transcript;
+                } else {
+                    interim_transcript += event.results[i][0].transcript;
+                }
+            }
+            setTranscript(prev => prev + final_transcript);
+            setInterimTranscript(interim_transcript);
+        };
+        
+        recognition.onerror = (event: any) => {
+            console.error('Speech recognition error', event.error);
+        };
+        
+        recognition.onend = () => {
+            if (isListening) {
+                 // The logic to restart is tricky due to browser restrictions.
+                 // For now, we update the state and the user can restart.
+                 // In a real-world scenario, more robust handling would be needed.
+                 setIsListening(false); 
+            }
+        };
+
+        recognitionRef.current = recognition;
+        
+        return () => {
+             if (recognitionRef.current) {
+                recognitionRef.current.stop();
+             }
+        };
+    }, []);
+
+    const toggleListening = () => {
+        if (isListening) {
+            recognitionRef.current?.stop();
+            setIsListening(false);
+        } else {
+            setTranscript('');
+            setInterimTranscript('');
+            setAnalysisResult(null);
+            recognitionRef.current?.start();
+            setIsListening(true);
+        }
+    };
+    
+    const handleAnalyze = async () => {
+        if (!transcript.trim()) return;
+        setIsLoadingAnalysis(true);
+        setAnalysisResult(null);
+
+        try {
+             const analysisSchema = {
+                type: Type.OBJECT,
+                properties: {
+                    summary: { type: Type.STRING, description: 'A beszélgetés rövid, 2-3 mondatos összefoglalása magyarul.' },
+                    action_items: {
+                        type: Type.ARRAY,
+                        description: 'A beszélgetésből származó konkrét teendők listája magyarul. Ha nincsenek, adj vissza üres listát.',
+                        items: { type: Type.STRING }
+                    },
+                    sentiment: { type: Type.STRING, description: 'A beszélgetés általános hangulata (pl. Pozitív, Negatív, Semleges) magyarul.' }
+                },
+                required: ['summary', 'action_items', 'sentiment']
+            };
+            
+            const response = await ai.models.generateContent({
+                model: model,
+                contents: `Elemezd a következő meeting leiratot:\n\n---\n${transcript}\n\n---`,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: analysisSchema
+                }
+            });
+
+            const jsonString = response.text.trim();
+            const parsedResult = JSON.parse(jsonString);
+            setAnalysisResult(parsedResult);
+
+        } catch(e) {
+            console.error("Analysis error:", e);
+            // TODO: Show error to user
+        } finally {
+            setIsLoadingAnalysis(false);
+        }
+    };
+
     return (
         <div className="meeting-assistant-view">
              <div className="view-header">
                 <h2>Meeting Asszisztens</h2>
             </div>
-            <div className="card meeting-controls-card">
-                 <h3>Hangfelvétel</h3>
-                <p>Indítsa el a felvételt, hogy az AI elemezhesse a megbeszélést.</p>
-                <button className="btn btn-primary"><span className="material-symbols-outlined">mic</span> Felvétel indítása</button>
-            </div>
-             <div className="card analysis-results-card">
-                 <h3>Elemzés</h3>
-                 <p>A felvétel után itt jelennek meg az eredmények.</p>
+            <div className="meeting-assistant-layout">
+                <div className="transcript-panel card">
+                     <div className="card-header">
+                        <h3>Élő leirat</h3>
+                         <div className="meeting-controls">
+                            <button onClick={toggleListening} className={`btn ${isListening ? 'btn-destructive' : 'btn-primary'}`}>
+                                <span className="material-symbols-outlined">{isListening ? 'mic_off' : 'mic'}</span>
+                                {isListening ? 'Felvétel leállítása' : 'Felvétel indítása'}
+                            </button>
+                            <button className="btn btn-secondary" onClick={handleAnalyze} disabled={isLoadingAnalysis || !transcript.trim() || isListening}>
+                                <span className="material-symbols-outlined">auto_awesome</span>
+                                {isLoadingAnalysis ? 'Elemzés...' : 'Elemzés'}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="card-body transcript-body">
+                        {transcript || interimTranscript ? (
+                            <>
+                                <p>{transcript}<span style={{color: 'var(--color-text-secondary)'}}>{interimTranscript}</span></p>
+                            </>
+                        ) : (
+                            <div className="placeholder-text">A felvétel indításához kattintson a gombra.</div>
+                        )}
+                    </div>
+                </div>
+                <div className="analysis-panel card">
+                     <div className="card-header">
+                        <h3>AI Elemzés</h3>
+                    </div>
+                    <div className="card-body">
+                        {isLoadingAnalysis && <div className="loading-spinner"><div></div><div></div><div></div><div></div></div>}
+                         {analysisResult && !isLoadingAnalysis && (
+                            <div className="analysis-results">
+                                <div className="analysis-section">
+                                    <h4>Összefoglalás</h4>
+                                    <p>{analysisResult.summary}</p>
+                                </div>
+                                 <div className="analysis-section">
+                                    <h4>Teendők</h4>
+                                    {analysisResult.action_items.length > 0 ? (
+                                        <ul>
+                                            {analysisResult.action_items.map((item, index) => <li key={index}>{item}</li>)}
+                                        </ul>
+                                    ) : <p>Nincsenek teendők.</p>}
+                                </div>
+                                <div className="analysis-section">
+                                    <h4>Hangulat</h4>
+                                    <p>{analysisResult.sentiment}</p>
+                                </div>
+                            </div>
+                        )}
+                        {!isLoadingAnalysis && !analysisResult && <div className="placeholder-text">Itt jelenik meg a meeting elemzése.</div>}
+                    </div>
+                </div>
             </div>
         </div>
     );
 };
 
-
-// --- RENDER APP ---
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-root.render(<App />);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
