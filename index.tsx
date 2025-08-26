@@ -296,15 +296,24 @@ const useMockData = () => {
             ),
         }));
     };
+
+    const updateProjectStatus = (projectId: string, newStatus: ProjectStatus) => {
+        setData(prevData => ({
+            ...prevData,
+            projects: prevData.projects.map(project =>
+                project.id === projectId ? { ...project, status: newStatus } : project
+            ),
+        }));
+    };
     
     const addDoc = (doc: DocItem) => {
         setData(prev => ({...prev, docs: [doc, ...prev.docs]}));
     }
 
-    return { ...data, updateTaskStatus, addDoc };
+    return { ...data, updateTaskStatus, addDoc, updateProjectStatus };
 };
 
-const Icon = ({ name }: { name: string }) => <span className="material-symbols-outlined">{name}</span>;
+const Icon = ({ name, filled }: { name: string, filled?: boolean }) => <span className={`material-symbols-outlined ${filled ? 'filled' : ''}`}>{name}</span>;
 
 
 // --- UI COMPONENTS ---
@@ -602,8 +611,210 @@ const TasksView = ({ tasks, updateTaskStatus }) => {
     );
 };
 
-const EmailView = () => <div className="view-fade-in"><Card header={<h2>Email</h2>}><p>Email View under construction.</p></Card></div>;
-const ProjectsView = () => <div className="view-fade-in"><Card header={<h2>Projects</h2>}><p>Projects View under construction.</p></Card></div>;
+const EmailView = ({ initialEmails }: { initialEmails: EmailMessage[] }) => {
+    const [emails, setEmails] = useState<EmailMessage[]>(initialEmails);
+    const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+    const [currentFolder, setCurrentFolder] = useState<EmailMessage['category']>('inbox');
+
+    const folders: { id: EmailMessage['category'], name: string, icon: string }[] = [
+        { id: 'inbox', name: 'Beérkezett', icon: 'inbox' },
+        { id: 'sent', name: 'Elküldött', icon: 'send' },
+        { id: 'drafts', name: 'Piszkozatok', icon: 'drafts' },
+        { id: 'spam', name: 'Spam', icon: 'report' },
+    ];
+    
+    const filteredEmails = useMemo(() => 
+        emails.filter(e => e.category === currentFolder)
+    , [emails, currentFolder]);
+
+    const selectedEmail = useMemo(() => 
+        emails.find(e => e.id === selectedEmailId)
+    , [emails, selectedEmailId]);
+
+    const handleSelectEmail = (emailId: string) => {
+        setSelectedEmailId(emailId);
+        // Mark email as read
+        setEmails(prevEmails => prevEmails.map(email => 
+            email.id === emailId ? { ...email, read: true } : email
+        ));
+    };
+    
+    const handleToggleImportant = (emailId: string) => {
+        setEmails(prevEmails => prevEmails.map(email =>
+            email.id === emailId ? { ...email, important: !email.important } : email
+        ));
+    };
+
+    return (
+        <div className="view-fade-in">
+            <Card fullHeight>
+                <div className="email-view-layout">
+                    <aside className="email-sidebar">
+                        <button className="btn btn-primary compose-btn">
+                            <Icon name="edit" /> Levélírás
+                        </button>
+                        <ul className="email-folders">
+                            {folders.map(folder => (
+                                <li 
+                                    key={folder.id} 
+                                    className={currentFolder === folder.id ? 'active' : ''}
+                                    onClick={() => setCurrentFolder(folder.id)}
+                                >
+                                    <Icon name={folder.icon} /> {folder.name}
+                                </li>
+                            ))}
+                        </ul>
+                    </aside>
+                    <section className="email-list-pane">
+                        {filteredEmails.map(email => (
+                            <div 
+                                key={email.id} 
+                                className={`email-item ${selectedEmailId === email.id ? 'selected' : ''} ${!email.read ? 'unread' : ''}`}
+                                onClick={() => handleSelectEmail(email.id)}
+                            >
+                                <div className="email-item-header">
+                                    <p className="email-item-sender">{email.sender}</p>
+                                    <p className="email-item-date">
+                                        {new Date(email.timestamp).toLocaleDateString()}
+                                    </p>
+                                </div>
+                                <p className="email-item-subject">{email.subject}</p>
+                            </div>
+                        ))}
+                    </section>
+                    <main className="email-content-pane">
+                        {selectedEmail ? (
+                            <div>
+                                <div className="email-header">
+                                    <h3>{selectedEmail.subject}</h3>
+                                    <div className="email-meta">
+                                        <p><strong>From:</strong> {selectedEmail.sender}</p>
+                                        <p><strong>To:</strong> {selectedEmail.recipient}</p>
+                                    </div>
+                                    <div className="email-actions">
+                                        <button className="btn btn-icon" onClick={() => handleToggleImportant(selectedEmail.id)} aria-label="Mark as important">
+                                             <Icon name="star" filled={selectedEmail.important} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="email-body">
+                                    <p>{selectedEmail.body}</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="no-email-selected">
+                                <Icon name="mail" />
+                                <p>Válasszon egy emailt a megtekintéshez</p>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            </Card>
+        </div>
+    );
+};
+
+// --- PROJECT VIEW COMPONENTS ---
+
+const ProjectCard = ({ project, tasks }: { project: Project, tasks: TaskItem[] }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [{ isDragging }, drag] = useDrag(() => ({
+        type: 'PROJECT',
+        item: { id: project.id },
+        collect: (monitor) => ({
+            isDragging: !!monitor.isDragging(),
+        }),
+    }));
+    drag(ref);
+
+    const relatedTasks = useMemo(() => tasks.filter(t => t.projectId === project.id), [tasks, project.id]);
+    const completedTasks = useMemo(() => relatedTasks.filter(t => t.status === 'Kész'), [relatedTasks]);
+    const progress = relatedTasks.length > 0 ? (completedTasks.length / relatedTasks.length) * 100 : 0;
+    
+    return (
+        <div ref={ref} className="project-card card" style={{ opacity: isDragging ? 0.5 : 1 }}>
+            <div className="project-card-header">
+                <h5 className="project-title">{project.title}</h5>
+                {project.dueDate && <span className="due-date"><Icon name="event" /> {new Date(project.dueDate).toLocaleDateString()}</span>}
+            </div>
+            <p className="project-description">{project.description}</p>
+            <div className="project-card-footer">
+                <div className="team-avatars">
+                    {project.team.map(member => (
+                        <div key={member} className="avatar-xs" title={member}>{member.charAt(0)}</div>
+                    ))}
+                </div>
+                <div className="progress-container">
+                     <div className="progress-bar-info">
+                        <span>Progress</span>
+                        <span>{Math.round(progress)}%</span>
+                    </div>
+                    <div className="progress-bar-background">
+                        <div className="progress-bar" style={{ width: `${progress}%` }}></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ProjectKanbanColumn = ({ status, projects, tasks, onDrop }: { status: ProjectStatus, projects: Project[], tasks: TaskItem[], onDrop: (projectId: string, newStatus: ProjectStatus) => void }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [{ isOver }, drop] = useDrop(() => ({
+        accept: 'PROJECT',
+        drop: (item: { id: string }) => onDrop(item.id, status),
+        collect: (monitor) => ({
+            isOver: !!monitor.isOver(),
+        }),
+    }));
+    drop(ref);
+
+    return (
+        <div ref={ref} className={`kanban-column card ${isOver ? 'is-over' : ''}`}>
+            <div className="kanban-column-header">
+                <h3>{status} ({projects.length})</h3>
+            </div>
+            <div className="kanban-column-body">
+                {projects.map(project => <ProjectCard key={project.id} project={project} tasks={tasks} />)}
+            </div>
+        </div>
+    );
+};
+
+const ProjectsView = ({ projects, tasks, updateProjectStatus }) => {
+    const statuses: ProjectStatus[] = ['Tervezés', 'Fejlesztés', 'Tesztelés', 'Kész'];
+
+    const handleDrop = (projectId, newStatus) => {
+        updateProjectStatus(projectId, newStatus);
+    };
+    
+    const projectsByStatus = useMemo(() => {
+        return statuses.reduce((acc, status) => {
+            acc[status] = projects.filter(p => p.status === status);
+            return acc;
+        }, {} as Record<ProjectStatus, Project[]>);
+    }, [projects]);
+
+    return (
+        <DndProvider backend={HTML5Backend}>
+            <div className="view-header"><h2>Projects</h2></div>
+            <div className="tasks-kanban-board-container">
+                <div className="kanban-board">
+                    {statuses.map(status => (
+                        <ProjectKanbanColumn
+                            key={status}
+                            status={status}
+                            projects={projectsByStatus[status]}
+                            tasks={tasks}
+                            onDrop={handleDrop}
+                        />
+                    ))}
+                </div>
+            </div>
+        </DndProvider>
+    );
+};
+
 const ProposalsView = () => <div className="view-fade-in"><Card header={<h2>Proposals</h2>}><p>Proposals View under construction.</p></Card></div>;
 const TrainingsView = () => <div className="view-fade-in"><Card header={<h2>Trainings</h2>}><p>Trainings View under construction.</p></Card></div>;
 const ContactsView = () => <div className="view-fade-in"><Card header={<h2>Contacts</h2>}><p>Contacts View under construction.</p></Card></div>;
@@ -961,8 +1172,8 @@ const App = () => {
             case 'dashboard': return <DashboardView tasks={data.tasks} emails={data.emails}/>;
             case 'planner': return <PlannerView events={data.plannerEvents} />;
             case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus}/>;
-            case 'email': return <EmailView />;
-            case 'projects': return <ProjectsView />;
+            case 'email': return <EmailView initialEmails={data.emails} />;
+            case 'projects': return <ProjectsView projects={data.projects} tasks={data.tasks} updateProjectStatus={data.updateProjectStatus} />;
             case 'proposals': return <ProposalsView />;
             case 'trainings': return <TrainingsView />;
             case 'contacts': return <ContactsView />;
