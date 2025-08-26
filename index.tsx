@@ -815,7 +815,54 @@ const ProjectsView = ({ projects, tasks, updateProjectStatus }) => {
     );
 };
 
-const ProposalsView = () => <div className="view-fade-in"><Card header={<h2>Pályázatok</h2>}><p>Pályázatok nézet fejlesztés alatt.</p></Card></div>;
+const ProposalCard = ({ proposal }: { proposal: Proposal }) => {
+    const statusClass = proposal.status.toLowerCase().replace(/ /g, '-').replace('é', 'e').replace('á', 'a');
+    
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(amount);
+    };
+
+    return (
+        <Card className="proposal-card">
+            <div className="proposal-card-header">
+                <h5 className="proposal-title">{proposal.title}</h5>
+                <span className={`proposal-status status-${statusClass}`}>{proposal.status}</span>
+            </div>
+            <p className="proposal-funder">{proposal.funder}</p>
+            <p className="proposal-summary">{proposal.summary}</p>
+            <div className="proposal-card-footer">
+                <div className="proposal-info-item">
+                    <Icon name="event" />
+                    <span>{new Date(proposal.submissionDeadline).toLocaleDateString('hu-HU')}</span>
+                </div>
+                <div className="proposal-info-item">
+                    <Icon name="payments" />
+                    <span>{formatCurrency(proposal.amount)}</span>
+                </div>
+                 {proposal.relatedProjectId && (
+                    <div className="proposal-info-item related-project">
+                        <Icon name="link" />
+                        <span>Projekt: {proposal.relatedProjectId}</span>
+                    </div>
+                )}
+            </div>
+        </Card>
+    );
+};
+
+const ProposalsView = ({ proposals }: { proposals: Proposal[] }) => {
+    return (
+        <div className="view-fade-in">
+            <div className="view-header"><h2>Pályázatok</h2></div>
+            <div className="proposals-grid">
+                {proposals.map(proposal => (
+                    <ProposalCard key={proposal.id} proposal={proposal} />
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const TrainingsView = () => <div className="view-fade-in"><Card header={<h2>Képzések</h2>}><p>Képzések nézet fejlesztés alatt.</p></Card></div>;
 const ContactsView = () => <div className="view-fade-in"><Card header={<h2>Névjegyek</h2>}><p>Névjegyek nézet fejlesztés alatt.</p></Card></div>;
 
@@ -1263,7 +1310,7 @@ const App = () => {
             case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus}/>;
             case 'email': return <EmailView initialEmails={data.emails} />;
             case 'projects': return <ProjectsView projects={data.projects} tasks={data.tasks} updateProjectStatus={data.updateProjectStatus} />;
-            case 'proposals': return <ProposalsView />;
+            case 'proposals': return <ProposalsView proposals={data.proposals} />;
             case 'trainings': return <TrainingsView />;
             case 'contacts': return <ContactsView />;
             case 'finances': return <FinancesView transactions={data.transactions} budgets={data.budgets} />;
