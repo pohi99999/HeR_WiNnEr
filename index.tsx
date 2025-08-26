@@ -318,7 +318,6 @@ const Icon = ({ name, filled }: { name: string, filled?: boolean }) => <span cla
 
 // --- UI COMPONENTS ---
 
-// FIX: Add `style` prop to Card component to allow passing custom styles.
 const Card = ({ children, className = '', header, fullHeight, style }: { children: React.ReactNode, className?: string, header?: React.ReactNode, fullHeight?: boolean, style?: React.CSSProperties }) => (
     <div className={`card ${className}`} style={{ height: fullHeight ? '100%' : 'auto', ...style }}>
         {header && <div className="card-header">{header}</div>}
@@ -526,13 +525,11 @@ const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
     );
 };
 
-
-// FIX: Changed `ref={drag}` to use a `useRef` hook to resolve react-dnd type incompatibility.
-const TaskCard = ({ task }) => {
+const TaskCard = ({ task }: { task: TaskItem }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [{ isDragging }, drag] = useDrag(() => ({
         type: 'TASK',
-        item: { id: task.id },
+        item: { id: task.id, status: task.status },
         collect: (monitor) => ({
             isDragging: !!monitor.isDragging(),
         }),
@@ -540,25 +537,25 @@ const TaskCard = ({ task }) => {
     drag(ref);
 
     return (
-        <div ref={ref} className="task-card card" style={{ opacity: isDragging ? 0.5 : 1 }}>
+        <div ref={ref} className="task-card" style={{ opacity: isDragging ? 0.4 : 1 }}>
             <div className="task-card-header">
-                <h5 className="task-title">{task.title}</h5>
+                <h4 className="task-title">{task.title}</h4>
+                <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
             </div>
-            {task.description && <p>{task.description}</p>}
-             <div className="task-card-pills">
-                <span className={`task-pill priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
-            </div>
+            {task.description && <p className="task-description">{task.description}</p>}
+             <div className="task-card-footer">
+                {task.dueDate && <div className="task-info-item"><Icon name="event" /><span>{task.dueDate}</span></div>}
+                {task.projectId && <div className="task-info-item"><Icon name="assignment" /><span>Projekt</span></div>}
+             </div>
         </div>
     );
 };
 
-
-// FIX: Changed `ref={drop}` to use a `useRef` hook to resolve react-dnd type incompatibility.
-const KanbanColumn = ({ status, tasks, onDrop }) => {
+const KanbanColumn = ({ status, tasks, onDropTask }: { status: TaskStatus, tasks: TaskItem[], onDropTask: (taskId: string, newStatus: TaskStatus) => void }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [{ isOver }, drop] = useDrop(() => ({
         accept: 'TASK',
-        drop: (item: { id: string }) => onDrop(item.id, status),
+        drop: (item: { id: string }) => onDropTask(item.id, status),
         collect: (monitor) => ({
             isOver: !!monitor.isOver(),
         }),
@@ -566,9 +563,10 @@ const KanbanColumn = ({ status, tasks, onDrop }) => {
     drop(ref);
 
     return (
-        <div ref={ref} className={`kanban-column card ${isOver ? 'is-over' : ''}`} >
+        <div ref={ref} className={`kanban-column ${isOver ? 'is-over' : ''}`}>
             <div className="kanban-column-header">
-                <h3>{status} ({tasks.length})</h3>
+                <h3>{status}</h3>
+                <span className="task-count">{tasks.length}</span>
             </div>
             <div className="kanban-column-body">
                 {tasks.map(task => <TaskCard key={task.id} task={task} />)}
@@ -577,32 +575,27 @@ const KanbanColumn = ({ status, tasks, onDrop }) => {
     );
 };
 
-
-const TasksView = ({ tasks, updateTaskStatus }) => {
+const TasksView = ({ tasks, updateTaskStatus }: { tasks: TaskItem[], updateTaskStatus: (id: string, status: TaskStatus) => void }) => {
     const statuses: TaskStatus[] = ['Teendő', 'Folyamatban', 'Kész', 'Blokkolt'];
-
-    const handleDrop = (taskId, newStatus) => {
-        updateTaskStatus(taskId, newStatus);
-    };
-    
-    const tasksByStatus = useMemo(() => {
-        return statuses.reduce((acc, status) => {
-            acc[status] = tasks.filter(t => t.status === status);
-            return acc;
-        }, {} as Record<TaskStatus, TaskItem[]>);
-    }, [tasks]);
+    const tasksByStatus = statuses.reduce((acc, status) => {
+        acc[status] = tasks.filter(t => t.status === status);
+        return acc;
+    }, {} as Record<TaskStatus, TaskItem[]>);
 
     return (
         <DndProvider backend={HTML5Backend}>
-            <div className="view-header"><h2>Feladatok</h2></div>
-            <div className="tasks-kanban-board-container">
+            <div className="view-fade-in kanban-board-container">
+                <div className="view-header">
+                    <h2>Feladatok</h2>
+                     <button className="btn btn-primary"><Icon name="add"/><span>Új Feladat</span></button>
+                </div>
                 <div className="kanban-board">
                     {statuses.map(status => (
                         <KanbanColumn
                             key={status}
                             status={status}
                             tasks={tasksByStatus[status]}
-                            onDrop={handleDrop}
+                            onDropTask={updateTaskStatus}
                         />
                     ))}
                 </div>
@@ -611,171 +604,130 @@ const TasksView = ({ tasks, updateTaskStatus }) => {
     );
 };
 
-const EmailView = ({ initialEmails }: { initialEmails: EmailMessage[] }) => {
-    const [emails, setEmails] = useState<EmailMessage[]>(initialEmails);
-    const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
-    const [currentFolder, setCurrentFolder] = useState<EmailMessage['category']>('inbox');
-
-    const folders: { id: EmailMessage['category'], name: string, icon: string }[] = [
-        { id: 'inbox', name: 'Beérkezett', icon: 'inbox' },
-        { id: 'sent', name: 'Elküldött', icon: 'send' },
-        { id: 'drafts', name: 'Piszkozatok', icon: 'drafts' },
-        { id: 'spam', name: 'Spam', icon: 'report' },
-    ];
+const EmailView = ({ emails: initialEmails }) => {
+    const [emails, setEmails] = useState(initialEmails);
+    const [selectedEmailId, setSelectedEmailId] = useState<string | null>(emails.find(e => e.category === 'inbox')?.id || null);
+    const [activeCategory, setActiveCategory] = useState<'inbox' | 'sent'>('inbox');
     
-    const filteredEmails = useMemo(() => 
-        emails.filter(e => e.category === currentFolder)
-    , [emails, currentFolder]);
+    const selectedEmail = emails.find(e => e.id === selectedEmailId);
 
-    const selectedEmail = useMemo(() => 
-        emails.find(e => e.id === selectedEmailId)
-    , [emails, selectedEmailId]);
+    const handleSelectEmail = (id: string) => {
+        setSelectedEmailId(id);
+        setEmails(emails.map(e => e.id === id ? { ...e, read: true } : e));
+    };
 
-    const handleSelectEmail = (emailId: string) => {
-        setSelectedEmailId(emailId);
-        // Mark email as read
-        setEmails(prevEmails => prevEmails.map(email => 
-            email.id === emailId ? { ...email, read: true } : email
-        ));
+    const toggleImportance = (id: string) => {
+        setEmails(emails.map(e => e.id === id ? { ...e, important: !e.important } : e));
     };
-    
-    const handleToggleImportant = (emailId: string) => {
-        setEmails(prevEmails => prevEmails.map(email =>
-            email.id === emailId ? { ...email, important: !email.important } : email
-        ));
-    };
+
+    const visibleEmails = emails.filter(e => e.category === activeCategory);
 
     return (
         <div className="view-fade-in">
-            <Card fullHeight>
-                <div className="email-view-layout">
-                    <aside className="email-sidebar">
-                        <button className="btn btn-primary compose-btn">
-                            <Icon name="edit" /> Levélírás
-                        </button>
+            <Card fullHeight className="email-view-card">
+                 <div className="email-view-layout">
+                    <div className="email-sidebar">
+                        <div className="email-actions">
+                            <button className="btn btn-primary" style={{width: '100%'}}>Új Email</button>
+                        </div>
                         <ul className="email-folders">
-                            {folders.map(folder => (
-                                <li 
-                                    key={folder.id} 
-                                    className={currentFolder === folder.id ? 'active' : ''}
-                                    onClick={() => setCurrentFolder(folder.id)}
-                                >
-                                    <Icon name={folder.icon} /> {folder.name}
-                                </li>
-                            ))}
+                            <li className={activeCategory === 'inbox' ? 'active' : ''} onClick={() => setActiveCategory('inbox')}>
+                                <Icon name="inbox" /> Beérkezett
+                            </li>
+                             <li className={activeCategory === 'sent' ? 'active' : ''} onClick={() => setActiveCategory('sent')}>
+                                <Icon name="send" /> Elküldött
+                            </li>
                         </ul>
-                    </aside>
-                    <section className="email-list-pane">
-                        {filteredEmails.map(email => (
-                            <div 
-                                key={email.id} 
-                                className={`email-item ${selectedEmailId === email.id ? 'selected' : ''} ${!email.read ? 'unread' : ''}`}
-                                onClick={() => handleSelectEmail(email.id)}
-                            >
-                                <div className="email-item-header">
-                                    <p className="email-item-sender">{email.sender}</p>
-                                    <p className="email-item-date">
-                                        {new Date(email.timestamp).toLocaleDateString()}
-                                    </p>
+                    </div>
+                    <div className="email-list-panel">
+                        {visibleEmails.map(email => (
+                            <div key={email.id} className={`email-list-item ${selectedEmailId === email.id ? 'selected' : ''} ${!email.read ? 'unread' : ''}`} onClick={() => handleSelectEmail(email.id)}>
+                                <div className="email-list-item-header">
+                                    <span className="email-sender">{email.sender}</span>
+                                    <span className="email-timestamp">{new Date(email.timestamp).toLocaleDateString()}</span>
                                 </div>
-                                <p className="email-item-subject">{email.subject}</p>
+                                <div className="email-list-item-subject">{email.subject}</div>
                             </div>
                         ))}
-                    </section>
-                    <main className="email-content-pane">
+                    </div>
+                    <div className="email-content-panel">
                         {selectedEmail ? (
-                            <div>
-                                <div className="email-header">
+                             <>
+                                <div className="email-content-header">
                                     <h3>{selectedEmail.subject}</h3>
-                                    <div className="email-meta">
-                                        <p><strong>From:</strong> {selectedEmail.sender}</p>
-                                        <p><strong>To:</strong> {selectedEmail.recipient}</p>
-                                    </div>
-                                    <div className="email-actions">
-                                        <button className="btn btn-icon" onClick={() => handleToggleImportant(selectedEmail.id)} aria-label="Mark as important">
-                                             <Icon name="star" filled={selectedEmail.important} />
-                                        </button>
-                                    </div>
+                                     <button className="btn btn-icon btn-secondary" onClick={() => toggleImportance(selectedEmail.id)}>
+                                        <Icon name="star" filled={selectedEmail.important} />
+                                    </button>
                                 </div>
-                                <div className="email-body">
-                                    <p>{selectedEmail.body}</p>
+                                <div className="email-content-meta">
+                                    <p><strong>Feladó:</strong> {selectedEmail.sender}</p>
+                                    <p><strong>Címzett:</strong> {selectedEmail.recipient}</p>
+                                    <p><strong>Dátum:</strong> {new Date(selectedEmail.timestamp).toLocaleString()}</p>
                                 </div>
-                            </div>
+                                <div className="email-content-body">
+                                    {selectedEmail.body}
+                                </div>
+                            </>
                         ) : (
-                            <div className="no-email-selected">
-                                <Icon name="mail" />
-                                <p>Válasszon egy emailt a megtekintéshez</p>
-                            </div>
+                            <div className="email-content-placeholder">Válasszon egy emailt a megtekintéshez.</div>
                         )}
-                    </main>
-                </div>
+                    </div>
+                 </div>
             </Card>
         </div>
     );
 };
 
-// --- PROJECT VIEW COMPONENTS ---
-
-const ProjectCard = ({ project, tasks }: { project: Project, tasks: TaskItem[] }) => {
-    const ref = useRef<HTMLDivElement>(null);
+const ProjectCard = ({ project, tasks }) => {
+    const ref = useRef(null);
     const [{ isDragging }, drag] = useDrag(() => ({
         type: 'PROJECT',
         item: { id: project.id },
-        collect: (monitor) => ({
-            isDragging: !!monitor.isDragging(),
-        }),
+        collect: (monitor) => ({ isDragging: !!monitor.isDragging() }),
     }));
     drag(ref);
 
-    const relatedTasks = useMemo(() => tasks.filter(t => t.projectId === project.id), [tasks, project.id]);
-    const completedTasks = useMemo(() => relatedTasks.filter(t => t.status === 'Kész'), [relatedTasks]);
-    const progress = relatedTasks.length > 0 ? (completedTasks.length / relatedTasks.length) * 100 : 0;
-    
+    const projectTasks = tasks.filter(t => t.projectId === project.id);
+    const completedTasks = projectTasks.filter(t => t.status === 'Kész').length;
+    const progress = projectTasks.length > 0 ? (completedTasks / projectTasks.length) * 100 : 0;
+
     return (
-        <div ref={ref} className="project-card card" style={{ opacity: isDragging ? 0.5 : 1 }}>
-            <div className="project-card-header">
-                <h5 className="project-title">{project.title}</h5>
-                {project.dueDate && <span className="due-date"><Icon name="event" /> {new Date(project.dueDate).toLocaleDateString()}</span>}
+        <div ref={ref} className="project-card" style={{ opacity: isDragging ? 0.5 : 1 }}>
+            <h4>{project.title}</h4>
+            <p>{project.description}</p>
+            <div className="project-team">
+                {project.team.map((member, index) => (
+                    <div key={index} className="avatar-sm" title={member}>{member.charAt(0)}</div>
+                ))}
             </div>
-            <p className="project-description">{project.description}</p>
-            <div className="project-card-footer">
-                <div className="team-avatars">
-                    {project.team.map(member => (
-                        <div key={member} className="avatar-xs" title={member}>{member.charAt(0)}</div>
-                    ))}
+            <div className="project-progress">
+                <div className="progress-bar-container">
+                    <div className="progress-bar" style={{ width: `${progress}%` }}></div>
                 </div>
-                <div className="progress-container">
-                     <div className="progress-bar-info">
-                        <span>Progress</span>
-                        <span>{Math.round(progress)}%</span>
-                    </div>
-                    <div className="progress-bar-background">
-                        <div className="progress-bar" style={{ width: `${progress}%` }}></div>
-                    </div>
-                </div>
+                <span>{Math.round(progress)}%</span>
             </div>
         </div>
     );
 };
 
-const ProjectKanbanColumn = ({ status, projects, tasks, onDrop }: { status: ProjectStatus, projects: Project[], tasks: TaskItem[], onDrop: (projectId: string, newStatus: ProjectStatus) => void }) => {
-    const ref = useRef<HTMLDivElement>(null);
+const ProjectKanbanColumn = ({ status, projects, tasks, onDropProject }) => {
+    const ref = useRef(null);
     const [{ isOver }, drop] = useDrop(() => ({
         accept: 'PROJECT',
-        drop: (item: { id: string }) => onDrop(item.id, status),
-        collect: (monitor) => ({
-            isOver: !!monitor.isOver(),
-        }),
+        // FIX: Add type to the dropped item to resolve TypeScript error.
+        drop: (item: { id: string }) => onDropProject(item.id, status),
+        collect: (monitor) => ({ isOver: !!monitor.isOver() }),
     }));
     drop(ref);
 
     return (
-        <div ref={ref} className={`kanban-column card ${isOver ? 'is-over' : ''}`}>
+        <div ref={ref} className={`kanban-column ${isOver ? 'is-over' : ''}`}>
             <div className="kanban-column-header">
-                <h3>{status} ({projects.length})</h3>
+                <h3>{status}</h3>
+                <span className="task-count">{projects.length}</span>
             </div>
             <div className="kanban-column-body">
-                {projects.map(project => <ProjectCard key={project.id} project={project} tasks={tasks} />)}
+                {projects.map(p => <ProjectCard key={p.id} project={p} tasks={tasks} />)}
             </div>
         </div>
     );
@@ -783,30 +735,25 @@ const ProjectKanbanColumn = ({ status, projects, tasks, onDrop }: { status: Proj
 
 const ProjectsView = ({ projects, tasks, updateProjectStatus }) => {
     const statuses: ProjectStatus[] = ['Tervezés', 'Fejlesztés', 'Tesztelés', 'Kész'];
-
-    const handleDrop = (projectId, newStatus) => {
-        updateProjectStatus(projectId, newStatus);
-    };
-    
-    const projectsByStatus = useMemo(() => {
-        return statuses.reduce((acc, status) => {
-            acc[status] = projects.filter(p => p.status === status);
-            return acc;
-        }, {} as Record<ProjectStatus, Project[]>);
-    }, [projects]);
+     const projectsByStatus = statuses.reduce((acc, status) => {
+        acc[status] = projects.filter(p => p.status === status);
+        return acc;
+    }, {} as Record<ProjectStatus, Project[]>);
 
     return (
-        <DndProvider backend={HTML5Backend}>
-            <div className="view-header"><h2>Projektek</h2></div>
-            <div className="tasks-kanban-board-container">
+         <DndProvider backend={HTML5Backend}>
+            <div className="view-fade-in kanban-board-container">
+                 <div className="view-header">
+                    <h2>Projektek</h2>
+                </div>
                 <div className="kanban-board">
                     {statuses.map(status => (
-                        <ProjectKanbanColumn
+                        <ProjectKanbanColumn 
                             key={status}
                             status={status}
                             projects={projectsByStatus[status]}
                             tasks={tasks}
-                            onDrop={handleDrop}
+                            onDropProject={updateProjectStatus}
                         />
                     ))}
                 </div>
@@ -815,523 +762,282 @@ const ProjectsView = ({ projects, tasks, updateProjectStatus }) => {
     );
 };
 
-const ProposalCard = ({ proposal }: { proposal: Proposal }) => {
-    const statusClass = proposal.status.toLowerCase().replace(/ /g, '-').replace('é', 'e').replace('á', 'a');
-    
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(amount);
-    };
-
-    return (
-        <Card className="proposal-card">
-            <div className="proposal-card-header">
-                <h5 className="proposal-title">{proposal.title}</h5>
-                <span className={`proposal-status status-${statusClass}`}>{proposal.status}</span>
+const ProposalCard = ({ proposal }: { proposal: Proposal }) => (
+    <div className="proposal-card stagger-item">
+        <div className="proposal-card-header">
+            <h3 className="proposal-title">{proposal.title}</h3>
+            <span className={`proposal-status status-${proposal.status.toLowerCase().replace(/ /g, '-').replace(/á/g, 'a').replace(/é/g, 'e')}`}>{proposal.status}</span>
+        </div>
+        <p className="proposal-funder">{proposal.funder}</p>
+        <p className="proposal-summary">{proposal.summary}</p>
+        <div className="proposal-card-footer">
+            <div className="proposal-info-item">
+                <Icon name="event" />
+                <span>{proposal.submissionDeadline}</span>
             </div>
-            <p className="proposal-funder">{proposal.funder}</p>
-            <p className="proposal-summary">{proposal.summary}</p>
-            <div className="proposal-card-footer">
-                <div className="proposal-info-item">
-                    <Icon name="event" />
-                    <span>{new Date(proposal.submissionDeadline).toLocaleDateString('hu-HU')}</span>
-                </div>
-                <div className="proposal-info-item">
-                    <Icon name="payments" />
-                    <span>{formatCurrency(proposal.amount)}</span>
-                </div>
-                 {proposal.relatedProjectId && (
-                    <div className="proposal-info-item related-project">
-                        <Icon name="link" />
-                        <span>Projekt: {proposal.relatedProjectId}</span>
-                    </div>
-                )}
+            <div className="proposal-info-item">
+                <Icon name="payments" />
+                <span>{proposal.amount.toLocaleString('hu-HU')} Ft</span>
             </div>
-        </Card>
-    );
-};
+            {proposal.relatedProjectId &&
+                <div className="proposal-info-item related-project">
+                    <Icon name="assignment" />
+                    <span>Kapcsolódó projekt</span>
+                </div>
+            }
+        </div>
+    </div>
+);
 
 const ProposalsView = ({ proposals }: { proposals: Proposal[] }) => {
     return (
         <div className="view-fade-in">
-            <div className="view-header"><h2>Pályázatok</h2></div>
+            <div className="view-header">
+                <h2>Pályázatok</h2>
+                <button className="btn btn-primary"><Icon name="add" /><span>Új Pályázat</span></button>
+            </div>
             <div className="proposals-grid">
-                {proposals.map(proposal => (
-                    <ProposalCard key={proposal.id} proposal={proposal} />
+                {proposals.map(p => <ProposalCard key={p.id} proposal={p} />)}
+            </div>
+        </div>
+    );
+};
+
+const TrainingsView = ({ trainings }: { trainings: TrainingItem[] }) => {
+    const getStatusClass = (status: TrainingStatus) => {
+        switch (status) {
+            case 'Folyamatban': return 'in-progress';
+            case 'Befejezett': return 'completed';
+            case 'Nem elkezdett': return 'not-started';
+            default: return '';
+        }
+    };
+
+    return (
+        <div className="view-fade-in">
+            <div className="view-header">
+                <h2>Képzések</h2>
+                <button className="btn btn-primary"><Icon name="add" /><span>Új Képzés</span></button>
+            </div>
+            <div className="trainings-grid">
+                {trainings.map(training => (
+                    <div key={training.id} className={`training-card stagger-item status-${getStatusClass(training.status)}`}>
+                        <div className="training-card-header">
+                            <h3 className="training-title">{training.title}</h3>
+                            <span className={`training-status`}>{training.status}</span>
+                        </div>
+                        <p className="training-provider">{training.provider}</p>
+                        <div className="training-progress">
+                            <div className="progress-bar-container">
+                                <div className="progress-bar" style={{ width: `${training.progress}%` }}></div>
+                            </div>
+                            <span className="progress-percent">{training.progress}%</span>
+                        </div>
+                        {training.url && <a href={training.url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">Megnyitás</a>}
+                    </div>
                 ))}
             </div>
         </div>
     );
 };
 
-const TrainingsView = () => <div className="view-fade-in"><Card header={<h2>Képzések</h2>}><p>Képzések nézet fejlesztés alatt.</p></Card></div>;
-const ContactsView = () => <div className="view-fade-in"><Card header={<h2>Névjegyek</h2>}><p>Névjegyek nézet fejlesztés alatt.</p></Card></div>;
-
-const FinancesView = ({ transactions, budgets }: { transactions: Transaction[], budgets: Budget[] }) => {
-    const currentMonthTransactions = useMemo(() => {
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
-        return transactions.filter(t => {
-            const tDate = new Date(t.date);
-            return tDate.getFullYear() === currentYear && tDate.getMonth() === currentMonth;
-        });
-    }, [transactions]);
-
-    const { income, expense, balance } = useMemo(() => {
-        const incomeVal = currentMonthTransactions
-            .filter(t => t.type === 'income')
-            .reduce((sum, t) => sum + t.amount, 0);
-        const expenseVal = currentMonthTransactions
-            .filter(t => t.type === 'expense')
-            .reduce((sum, t) => sum + t.amount, 0); // amounts are negative
-        return { income: incomeVal, expense: Math.abs(expenseVal), balance: incomeVal + expenseVal };
-    }, [currentMonthTransactions]);
-
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(amount);
-    };
-
-    const getSpentForBudget = (category: FinancialCategory) => {
-        return Math.abs(currentMonthTransactions
-            .filter(t => t.type === 'expense' && t.category === category)
-            .reduce((sum, t) => sum + t.amount, 0));
-    };
+const ContactCard = ({ contact }: { contact: Contact }) => {
+    const initial = contact.name.charAt(0).toUpperCase();
 
     return (
-        <div className="view-fade-in">
-            <div className="view-header"><h2>Pénzügyek</h2></div>
-            <div className="finances-grid">
-                <Card className="summary-card income">
-                    <h4>Havi Bevétel</h4>
-                    <p className="summary-amount">{formatCurrency(income)}</p>
-                </Card>
-                <Card className="summary-card expense">
-                    <h4>Havi Kiadás</h4>
-                    <p className="summary-amount">{formatCurrency(expense)}</p>
-                </Card>
-                <Card className="summary-card balance">
-                    <h4>Egyenleg</h4>
-                    <p className="summary-amount">{formatCurrency(balance)}</p>
-                </Card>
-
-                <Card className="budget-card" header={<h4>Havi Költségvetés</h4>}>
-                    <div className="budget-trackers">
-                        {budgets.map(budget => {
-                            const spent = getSpentForBudget(budget.category);
-                            const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
-                            return (
-                                <div key={budget.id} className="budget-item">
-                                    <div className="budget-info">
-                                        <span>{budget.category}</span>
-                                        <span>{formatCurrency(spent)} / {formatCurrency(budget.amount)}</span>
-                                    </div>
-                                    <div className="progress-bar-background">
-                                        <div className="progress-bar" style={{ width: `${Math.min(progress, 100)}%` }}></div>
-                                    </div>
-                                </div>
-                            );
-                        })}
+        <div className="contact-card stagger-item">
+            <div className="contact-card-header">
+                <div className="avatar-lg">{initial}</div>
+                <div className="contact-info-main">
+                    <h3 className="contact-name">{contact.name}</h3>
+                    <p className="contact-role">{contact.role}{contact.company && `, ${contact.company}`}</p>
+                </div>
+            </div>
+            <div className="contact-card-body">
+                {contact.email && (
+                    <div className="contact-detail-item">
+                        <Icon name="mail" />
+                        <a href={`mailto:${contact.email}`}>{contact.email}</a>
                     </div>
-                </Card>
-                
-                <Card className="transactions-card" header={<h4>Legutóbbi Tranzakciók</h4>}>
-                    <ul className="transaction-list">
-                        {transactions.slice(0, 10).map(t => (
-                            <li key={t.id} className="transaction-item">
-                                <div className="transaction-details">
-                                    <Icon name={t.type === 'income' ? 'arrow_upward' : 'arrow_downward'} />
-                                    <div>
-                                        <p className="transaction-title">{t.title}</p>
-                                        <p className="transaction-date">{new Date(t.date).toLocaleDateString('hu-HU')}</p>
-                                    </div>
-                                </div>
-                                <p className={`transaction-amount ${t.type}`}>{formatCurrency(t.amount)}</p>
-                            </li>
-                        ))}
-                    </ul>
-                </Card>
+                )}
+                {contact.phone && (
+                    <div className="contact-detail-item">
+                        <Icon name="phone" />
+                        <span>{contact.phone}</span>
+                    </div>
+                )}
+                {contact.notes && (
+                     <div className="contact-notes">
+                        <p>{contact.notes}</p>
+                    </div>
+                )}
+            </div>
+            <div className="contact-card-footer">
+                {(contact.linkedProjectIds?.length > 0 || contact.linkedProposalIds?.length > 0) && (
+                     <div className="contact-links">
+                        <Icon name="link" />
+                        <span>
+                            {contact.linkedProjectIds?.length > 0 && `${contact.linkedProjectIds.length} projekt`}
+                            {(contact.linkedProjectIds?.length > 0 && contact.linkedProposalIds?.length > 0) && ', '}
+                            {contact.linkedProposalIds?.length > 0 && `${contact.linkedProposalIds.length} pályázat`}
+                        </span>
+                    </div>
+                )}
             </div>
         </div>
     );
 };
 
-const DocsView = () => <div className="view-fade-in"><Card header={<h2>Dokumentumok</h2>}><p>Dokumentumok nézet fejlesztés alatt.</p></Card></div>;
 
-
-const GeminiChatView = () => {
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const chat = useRef<Chat | null>(null);
-    const messagesEndRef = useRef<null | HTMLDivElement>(null);
-
-    useEffect(() => {
-        chat.current = ai.chats.create({
-            model: 'gemini-2.5-flash',
-            config: { tools: [{ googleSearch: {} }] },
-        });
-    }, []);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
-    useEffect(scrollToBottom, [messages]);
-    
-    const sendMessage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading) return;
-
-        const userMessage: Message = { id: generateId(), text: input, sender: 'user' };
-        setMessages(prev => [...prev, userMessage]);
-        setInput('');
-        setIsLoading(true);
-
-        try {
-            const responseStream = await chat.current.sendMessageStream({ message: input });
-            
-            let botMessage: Message = { id: generateId(), text: '', sender: 'bot' };
-            setMessages(prev => [...prev, botMessage]);
-
-            for await (const chunk of responseStream) {
-                botMessage.text += chunk.text;
-                setMessages(prev => prev.map(m => m.id === botMessage.id ? { ...m, text: botMessage.text } : m));
-            }
-
-        } catch (error) {
-            console.error(error);
-            const errorMessage: Message = { id: generateId(), text: 'Sorry, I encountered an error.', sender: 'bot', isError: true };
-            setMessages(prev => [...prev, errorMessage]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
+const ContactsView = ({ contacts }: { contacts: Contact[] }) => {
     return (
-        <Card fullHeight className="gemini-chat-view view-fade-in">
-             <div className="chat-window">
-                <div className="chat-messages">
-                    {messages.map((msg) => (
-                        <div key={msg.id} className={`message ${msg.sender} ${msg.isError ? 'error' : ''} ${msg.isAction ? 'action' : ''}`}>
-                            <div className="message-content">
-                               <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
-                            </div>
-                        </div>
-                    ))}
-                     {isLoading && (
-                        <div className="message bot">
-                            <div className="message-content typing-indicator">
-                                <span></span><span></span><span></span>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                </div>
-                <form onSubmit={sendMessage} className="chat-input-form">
-                    <input
-                        type="text"
-                        className="form-input"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder="Ask Gemini anything..."
-                        disabled={isLoading}
-                        aria-label="Chat input"
-                    />
-                    <button type="submit" className="btn btn-primary" disabled={isLoading}>
-                        <Icon name="send" />
-                    </button>
-                </form>
+        <div className="view-fade-in">
+            <div className="view-header">
+                <h2>Névjegyek</h2>
+                <button className="btn btn-primary">
+                    <Icon name="add" />
+                    <span>Új Névjegy</span>
+                </button>
             </div>
-        </Card>
+            <div className="contacts-grid">
+                {contacts.map((contact) => (
+                    <ContactCard key={contact.id} contact={contact} />
+                ))}
+            </div>
+        </div>
     );
 };
 
-const CreativeView = () => {
-    const [prompt, setPrompt] = useState('');
-    const [images, setImages] = useState<string[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const { addDoc } = useMockData();
+const FinancesView = ({ transactions, budgets }) => {
+    const thisMonthTransactions = transactions.filter(t => new Date(t.date).getMonth() === new Date().getMonth());
+    const income = thisMonthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const expense = thisMonthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const balance = income + expense;
 
-    const generateImage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!prompt.trim()) return;
+    return (
+        <div className="view-fade-in finances-grid">
+            <Card className="finance-summary-card stagger-item">
+                <h4>Bevétel</h4>
+                <p className="amount income">{income.toLocaleString('hu-HU')} Ft</p>
+            </Card>
+            <Card className="finance-summary-card stagger-item" style={{animationDelay: '100ms'}}>
+                <h4>Kiadás</h4>
+                <p className="amount expense">{Math.abs(expense).toLocaleString('hu-HU')} Ft</p>
+            </Card>
+            <Card className="finance-summary-card stagger-item" style={{animationDelay: '200ms'}}>
+                <h4>Egyenleg</h4>
+                <p className="amount">{balance.toLocaleString('hu-HU')} Ft</p>
+            </Card>
+            <Card className="stagger-item" style={{animationDelay: '300ms', gridColumn: '1 / -1'}} header={<h4>Költségvetés</h4>}>
+                <div className="budget-list">
+                    {budgets.map(b => {
+                        const spent = Math.abs(thisMonthTransactions.filter(t => t.category === b.category).reduce((s, t) => s + t.amount, 0));
+                        const percent = (spent / b.amount) * 100;
+                        return (
+                             <div key={b.id} className="budget-item">
+                                <div className="budget-info">
+                                    <span>{b.category}</span>
+                                    <span>{spent.toLocaleString()} / {b.amount.toLocaleString()} Ft</span>
+                                </div>
+                                 <div className="progress-bar-container">
+                                    <div className="progress-bar" style={{width: `${Math.min(percent, 100)}%`}}></div>
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            </Card>
+             <Card className="stagger-item" style={{animationDelay: '400ms', gridColumn: '1 / -1'}} header={<h4>Legutóbbi Tranzakciók</h4>}>
+                <ul className="transaction-list">
+                    {transactions.slice(0, 5).map(t => (
+                        <li key={t.id}>
+                            <Icon name={t.type === 'income' ? 'arrow_upward' : 'arrow_downward'} />
+                            <span>{t.title}</span>
+                            <span className={`amount ${t.type}`}>{t.amount.toLocaleString()} Ft</span>
+                        </li>
+                    ))}
+                </ul>
+            </Card>
+        </div>
+    );
+};
 
-        setIsLoading(true);
-        setError('');
-        setImages([]);
-
-        try {
-             const response = await ai.models.generateImages({
-                model: 'imagen-4.0-generate-001',
-                prompt: prompt,
-                config: { numberOfImages: 1 },
-            });
-            const base64Image = response.generatedImages[0].image.imageBytes;
-            setImages([`data:image/png;base64,${base64Image}`]);
-
-        } catch (err) {
-            console.error(err);
-            setError('Failed to generate image. Please try again.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+const DocsView = ({ docs: initialDocs, addDoc }) => {
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
     
-    const saveImage = (base64Image: string) => {
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if(!title || !content) return;
         const newDoc: DocItem = {
             id: generateId(),
-            type: 'image',
-            title: `AI Image: ${prompt.substring(0, 20)}...`,
-            content: base64Image,
+            type: 'note',
+            title,
+            content,
             createdAt: new Date().toISOString(),
         };
         addDoc(newDoc);
-        // Add notification logic here if available
-    };
+        setTitle('');
+        setContent('');
+    }
+
+    const DocCard = ({ doc }: { doc: DocItem }) => {
+        switch(doc.type) {
+            case 'note': return <div className="doc-card note-card"><h4>{doc.title}</h4><p>{doc.content.substring(0, 100)}...</p></div>
+            case 'link': return <div className="doc-card link-card"><Icon name="link"/><h4>{doc.title}</h4><a href={doc.content} target="_blank">{doc.content}</a></div>
+            case 'image': return <div className="doc-card image-card"><h4>{doc.title}</h4><img src={doc.content} alt={doc.title}/></div>
+            default: return null;
+        }
+    }
 
     return (
-        <div className="creative-view-container view-fade-in">
-            <Card className="generation-form-card">
-                <form onSubmit={generateImage} className="generation-form">
-                    <h4>Image Generation</h4>
-                    <textarea
-                        className="form-textarea"
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="Describe the image you want to create..."
-                        rows={5}
-                        disabled={isLoading}
-                    />
-                    <button type="submit" className="btn btn-primary" disabled={isLoading}>
-                        {isLoading ? 'Generating...' : 'Generate'}
-                    </button>
+        <div className="view-fade-in docs-view-grid">
+            <Card header={<h4>Új jegyzet</h4>} className="add-doc-card">
+                <form onSubmit={handleSubmit} className="add-doc-form">
+                    <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Jegyzet címe..." />
+                    <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Tartalom..."></textarea>
+                    <button type="submit" className="btn btn-primary">Mentés</button>
                 </form>
             </Card>
-            <Card className="image-results-card">
-                {isLoading && <div className="loading-spinner"><div></div><div></div><div></div><div></div></div>}
-                {error && <p className="error-message">{error}</p>}
-                {!isLoading && !error && images.length === 0 && <p className="placeholder-text">Your generated images will appear here.</p>}
-                {images.length > 0 && (
-                    <div className="image-results-grid">
-                        {images.map((img, index) => (
-                             <div key={index} className="generated-image-container">
-                                <img src={img} alt={`Generated image ${index + 1}`} />
-                                <button className="btn btn-primary save-btn" onClick={() => saveImage(img)}>
-                                    <Icon name="save" /> Save
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </Card>
+            {initialDocs.map(doc => <DocCard key={doc.id} doc={doc} />)}
         </div>
     );
 };
 
-const MeetingAssistantView = () => {
-    const [isRecording, setIsRecording] = useState(false);
-    const [transcript, setTranscript] = useState('');
-    const [analysis, setAnalysis] = useState<{ summary: string; actionItems: string[]; keyTopics: string[] } | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const recognitionRef = useRef<any>(null);
+const GeminiChatView = () => <Card>Gemini Chat helyőrző</Card>;
+const CreativeToolsView = () => <Card>Kreatív Eszközök helyőrző</Card>;
+const MeetingAssistantView = () => <Card>Meeting Asszisztens helyőrző</Card>;
 
-    useEffect(() => {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'hu-HU'; // Or any other language
-
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
-                }
-                setTranscript(prev => prev + finalTranscript);
-            };
-            
-            recognitionRef.current = recognition;
-        }
-        
-        return () => {
-             if (recognitionRef.current) {
-                recognitionRef.current.stop();
-            }
-        }
-
-    }, []);
-
-    const toggleRecording = () => {
-        if (!recognitionRef.current) {
-            setError('Speech Recognition is not supported by your browser.');
-            return;
-        }
-        if (isRecording) {
-            recognitionRef.current.stop();
-            setIsRecording(false);
-        } else {
-            setTranscript('');
-            setAnalysis(null);
-            setError('');
-            recognitionRef.current.start();
-            setIsRecording(true);
-        }
-    };
-    
-    const analyzeTranscript = async () => {
-        if (!transcript.trim()) return;
-        setIsLoading(true);
-        setError('');
-        setAnalysis(null);
-        
-        const prompt = `Analyze the following meeting transcript. Provide a concise summary, a list of action items, and a list of key topics discussed.
-        Transcript:
-        ---
-        ${transcript}
-        ---
-        `;
-        
-        try {
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            summary: { type: Type.STRING, description: 'A brief summary of the meeting.' },
-                            actionItems: {
-                                type: Type.ARRAY,
-                                items: { type: Type.STRING },
-                                description: 'A list of action items from the meeting.'
-                            },
-                            keyTopics: {
-                                type: Type.ARRAY,
-                                items: { type: Type.STRING },
-                                description: 'A list of key topics discussed.'
-                            },
-                        }
-                    },
-                },
-            });
-            
-            const jsonString = response.text;
-            const parsedJson = JSON.parse(jsonString);
-            setAnalysis(parsedJson);
-
-        } catch (err) {
-            console.error(err);
-            setError("Failed to analyze the transcript. Please try again.");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-
-    return (
-         <div className="view-fade-in meeting-assistant-layout">
-            <Card className="transcript-panel" fullHeight
-                header={
-                    <div className="card-header-content">
-                        <h4>Transcript</h4>
-                        <div className="meeting-controls">
-                            <button onClick={toggleRecording} className={`btn ${isRecording ? 'btn-destructive' : 'btn-primary'}`}>
-                                <Icon name={isRecording ? 'stop' : 'mic'} />
-                                {isRecording ? 'Stop Recording' : 'Start Recording'}
-                            </button>
-                        </div>
-                    </div>
-                }>
-                <div className="transcript-body">
-                    {transcript || <p className="placeholder-text">Your meeting transcript will appear here...</p>}
-                </div>
-            </Card>
-
-            <Card className="analysis-panel" fullHeight
-                header={
-                     <div className="card-header-content">
-                        <h4>AI Analysis</h4>
-                        <button onClick={analyzeTranscript} className="btn btn-secondary" disabled={isLoading || isRecording || !transcript}>
-                            <Icon name="auto_awesome" />
-                            Analyze
-                        </button>
-                    </div>
-                }>
-                 <div className="analysis-results">
-                    {isLoading && <div className="loading-spinner"><div></div><div></div><div></div><div></div></div>}
-                    {error && <p className="error-message">{error}</p>}
-                    {!analysis && !isLoading && <p className="placeholder-text">Analysis results will appear here after recording and analyzing.</p>}
-                    {analysis && (
-                        <>
-                            <div className="analysis-section">
-                                <h4>Summary</h4>
-                                <p>{analysis.summary}</p>
-                            </div>
-                            <div className="analysis-section">
-                                <h4>Action Items</h4>
-                                <ul>
-                                    {analysis.actionItems.map((item, i) => <li key={i}>{item}</li>)}
-                                </ul>
-                            </div>
-                            <div className="analysis-section">
-                                <h4>Key Topics</h4>
-                                <ul>
-                                    {analysis.keyTopics.map((topic, i) => <li key={i}>{topic}</li>)}
-                                </ul>
-                            </div>
-                        </>
-                    )}
-                </div>
-            </Card>
-        </div>
-    )
-}
-
-// --- MAIN APP ---
 
 const App = () => {
     const [currentView, setCurrentView] = useState('dashboard');
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
     const data = useMockData();
 
     const renderView = () => {
         switch (currentView) {
-            case 'dashboard': return <DashboardView tasks={data.tasks} emails={data.emails}/>;
+            case 'dashboard': return <DashboardView tasks={data.tasks} emails={data.emails} />;
             case 'planner': return <PlannerView events={data.plannerEvents} />;
-            case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus}/>;
-            case 'email': return <EmailView initialEmails={data.emails} />;
+            case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus} />;
+            case 'email': return <EmailView emails={data.emails} />;
             case 'projects': return <ProjectsView projects={data.projects} tasks={data.tasks} updateProjectStatus={data.updateProjectStatus} />;
             case 'proposals': return <ProposalsView proposals={data.proposals} />;
-            case 'trainings': return <TrainingsView />;
-            case 'contacts': return <ContactsView />;
+            case 'trainings': return <TrainingsView trainings={data.trainings} />;
+            case 'contacts': return <ContactsView contacts={data.contacts} />;
             case 'finances': return <FinancesView transactions={data.transactions} budgets={data.budgets} />;
-            case 'docs': return <DocsView />;
+            case 'docs': return <DocsView docs={data.docs} addDoc={data.addDoc} />;
             case 'gemini_chat': return <GeminiChatView />;
-            case 'creative_tools': return <CreativeView />;
+            case 'creative_tools': return <CreativeToolsView />;
             case 'meeting_assistant': return <MeetingAssistantView />;
-            default: return <DashboardView tasks={data.tasks} emails={data.emails} />;
+            default: return <DashboardView tasks={data.tasks} emails={data.emails}/>;
         }
     };
 
     return (
         <div className="app-layout">
-            <Sidebar 
-                currentView={currentView} 
-                setView={setCurrentView} 
-                isCollapsed={isSidebarCollapsed}
-                setCollapsed={setIsSidebarCollapsed}
-            />
+            <Sidebar currentView={currentView} setView={setCurrentView} isCollapsed={isSidebarCollapsed} setCollapsed={setSidebarCollapsed} />
             <div className="page-container" style={{paddingLeft: isSidebarCollapsed ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)'}}>
-                <GlobalHeader currentView={currentView} />
+                 <GlobalHeader currentView={currentView} />
                 <main className="main-content">
                     {renderView()}
                 </main>
