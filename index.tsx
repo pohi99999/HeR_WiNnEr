@@ -414,7 +414,109 @@ const DashboardView = ({ tasks, emails }) => (
     </div>
 );
 
-const PlannerView = () => <div className="view-fade-in"><Card header={<h2>Planner</h2>}><p>Planner View under construction.</p></Card></div>;
+const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
+    const [currentDate, setCurrentDate] = useState(new Date());
+
+    const changeMonth = (offset: number) => {
+        setCurrentDate(prevDate => {
+            const newDate = new Date(prevDate);
+            newDate.setMonth(newDate.getMonth() + offset);
+            return newDate;
+        });
+    };
+
+    const goToToday = () => {
+        setCurrentDate(new Date());
+    };
+
+    const { monthGrid, monthName, year } = useMemo(() => {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const monthName = currentDate.toLocaleString('hu-HU', { month: 'long' });
+
+        const firstDayOfMonth = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        const monthGrid: { date: Date; isCurrentMonth: boolean }[] = [];
+        
+        const correctedFirstDay = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
+
+        const prevMonthDays = new Date(year, month, 0).getDate();
+        for (let i = correctedFirstDay - 1; i >= 0; i--) {
+            monthGrid.push({
+                date: new Date(year, month - 1, prevMonthDays - i),
+                isCurrentMonth: false,
+            });
+        }
+        
+        for (let i = 1; i <= daysInMonth; i++) {
+            monthGrid.push({
+                date: new Date(year, month, i),
+                isCurrentMonth: true,
+            });
+        }
+
+        const gridEndIndex = monthGrid.length;
+        const remainingCells = 42 - gridEndIndex;
+        for (let i = 1; i <= remainingCells; i++) {
+            monthGrid.push({
+                date: new Date(year, month + 1, i),
+                isCurrentMonth: false,
+            });
+        }
+
+        return { monthGrid, monthName, year };
+    }, [currentDate]);
+    
+    const weekDays = ['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat', 'Vasárnap'];
+
+    const getEventsForDay = (day: Date) => {
+        const dateString = day.toISOString().split('T')[0];
+        return events.filter(event => event.date === dateString);
+    };
+
+    return (
+        <div className="view-fade-in">
+            <Card header={
+                <div className="view-header" style={{marginBottom: 0, flexWrap: 'nowrap'}}>
+                    <h2>Planner</h2>
+                    <div className="calendar-controls">
+                        <button className="btn btn-secondary btn-icon" onClick={() => changeMonth(-1)} aria-label="Previous month"><Icon name="chevron_left" /></button>
+                         <h3 className="calendar-current-date">{`${year} ${monthName}`}</h3>
+                        <button className="btn btn-secondary btn-icon" onClick={() => changeMonth(1)} aria-label="Next month"><Icon name="chevron_right" /></button>
+                        <button className="btn btn-secondary" onClick={goToToday}>Ma</button>
+                    </div>
+                </div>
+            }>
+                <div className="calendar-container">
+                    <div className="calendar-header">
+                        {weekDays.map(day => <div key={day} className="day-header">{day}</div>)}
+                    </div>
+                    <div className="calendar-body">
+                        {monthGrid.map((day, index) => {
+                            const dayEvents = getEventsForDay(day.date);
+                            const isToday = day.date.toDateString() === new Date().toDateString() && day.isCurrentMonth;
+                            return (
+                                <div key={index} className={`day-cell ${day.isCurrentMonth ? '' : 'other-month'}`}>
+                                    <span className={`day-number ${isToday ? 'today' : ''}`}>{day.date.getDate()}</span>
+                                    <div className="events-container">
+                                        {dayEvents.slice(0,3).map(event => (
+                                            <div key={event.id} className={`event-pill event-type-${event.type}`} title={event.title}>
+                                                <span className="event-pill-dot"></span>
+                                                <span className="event-title">{event.title}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </Card>
+        </div>
+    );
+};
+
 
 // FIX: Changed `ref={drag}` to use a `useRef` hook to resolve react-dnd type incompatibility.
 const TaskCard = ({ task }) => {
@@ -857,7 +959,7 @@ const App = () => {
     const renderView = () => {
         switch (currentView) {
             case 'dashboard': return <DashboardView tasks={data.tasks} emails={data.emails}/>;
-            case 'planner': return <PlannerView />;
+            case 'planner': return <PlannerView events={data.plannerEvents} />;
             case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus}/>;
             case 'email': return <EmailView />;
             case 'projects': return <ProjectsView />;

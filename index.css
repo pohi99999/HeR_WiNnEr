@@ -407,41 +407,31 @@ body::after {
 .email-list .email-subject { color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* --- PLANNER VIEW --- */
-.calendar-controls { display: flex; align-items: center; gap: var(--spacing-sm); }
-.calendar-current-date { font-size: 1.25rem; font-weight: var(--font-weight-semibold; min-width: 200px; text-align: center; }
-.calendar-container, .time-grid-view { overflow: hidden; }
-.calendar-header, .time-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); background: var(--color-surface-glass-light); }
-.time-grid-header { grid-template-columns: 60px repeat(7, 1fr); }
-.day-header, .day-header-cell { text-align: center; padding: var(--spacing-md) 0; font-weight: var(--font-weight-semibold; color: var(--color-text-secondary); }
-.day-header-cell { display: flex; flex-direction: column; }
+.calendar-controls { display: flex; align-items: center; gap: var(--spacing-sm); margin-left: auto; }
+.calendar-current-date { font-size: 1.25rem; font-weight: var(--font-weight-semibold); min-width: 200px; text-align: center; }
+.calendar-container { overflow: hidden; }
+.calendar-header { display: grid; grid-template-columns: repeat(7, 1fr); background: var(--color-surface-glass-light); }
+.day-header { text-align: center; padding: var(--spacing-sm) 0; font-weight: var(--font-weight-semibold); color: var(--color-text-secondary); }
 .calendar-body { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 1fr; }
-.day-cell { min-height: 120px; border: 1px solid var(--color-border); padding: var(--spacing-sm); }
-.day-cell.other-month { background-color: rgba(0,0,0,0.1); }
-.day-cell .day-number { font-weight: var(--font-weight-medium); }
+.day-cell { min-height: 120px; border: 1px solid var(--color-border); padding: var(--spacing-sm); transition: background-color var(--transition-fast); }
+.day-cell:hover { background-color: var(--color-surface-glass-light); }
+.day-cell.other-month { background-color: rgba(0,0,0,0.1); color: var(--color-text-tertiary); }
+.day-cell .day-number { font-weight: var(--font-weight-medium); width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
+.day-number.today { background-color: var(--color-primary); color: var(--color-text-on-primary); }
 .events-container { margin-top: var(--spacing-sm); display: flex; flex-direction: column; gap: var(--spacing-xs); }
-.event-pill { display: flex; align-items: center; font-size: 12px; padding: 2px 6px; border-radius: var(--border-radius-full); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event-pill { display: flex; align-items: center; font-size: 12px; padding: 2px 6px; border-radius: var(--border-radius-full); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-primary); }
 .event-pill-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
-.event-type-personal .event-pill-dot, .event-type-personal { background-color: var(--color-event-personal); }
-.event-type-work .event-pill-dot, .event-type-work { background-color: var(--color-event-work); }
-.event-type-meeting .event-pill-dot, .event-type-meeting { background-color: var(--color-event-meeting); }
-.event-type-deadline .event-pill-dot, .event-type-deadline { background-color: var(--color-event-deadline); }
-/* Time Grid (Week/Day) */
-.time-grid-body-scroll { height: 60vh; overflow-y: auto; }
-.time-grid-body { display: grid; grid-template-columns: 60px repeat(7, 1fr); position: relative; }
-.time-grid-view.day-view .time-grid-body { grid-template-columns: 60px 1fr; }
-.time-gutter { grid-column: 1 / 2; }
-.time-label { height: 60px; text-align: right; padding-right: var(--spacing-sm); font-size: 12px; color: var(--color-text-tertiary); position: relative; }
-.time-label::after { content: ''; position: absolute; bottom: 0; right: 0; width: 10px; border-top: 1px solid var(--color-border); }
-.day-column { position: relative; border-left: 1px solid var(--color-border); height: 1440px; /* 24 * 60 */ }
-.timed-events-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
-.calendar-event-block { position: absolute; left: 4px; right: 4px; background: var(--color-surface-glass-light); border-left: 4px solid var(--color-primary); border-radius: var(--border-radius-sm); padding: var(--spacing-xs) var(--spacing-sm); font-size: 12px; overflow: hidden; }
-.event-block-title { font-weight: var(--font-weight-semibold); }
-.event-block-time { display: block; color: var(--color-text-secondary); }
-.event-type-personal { border-left-color: var(--color-event-personal) !important; }
-.event-type-work { border-left-color: var(--color-event-work) !important; }
-.event-type-meeting { border-left-color: var(--color-event-meeting) !important; }
-.event-type-deadline { border-left-color: var(--color-event-deadline) !important; }
+.event-pill .event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Event Type Colors */
+.event-type-personal { background-color: rgba(52, 152, 219, 0.2); }
+.event-type-work { background-color: rgba(243, 156, 18, 0.2); }
+.event-type-meeting { background-color: rgba(155, 89, 182, 0.2); }
+.event-type-deadline, .event-type-proposal_deadline { background-color: rgba(231, 76, 60, 0.2); }
+.event-type-personal .event-pill-dot { background-color: var(--color-event-personal); }
+.event-type-work .event-pill-dot { background-color: var(--color-event-work); }
+.event-type-meeting .event-pill-dot { background-color: var(--color-event-meeting); }
+.event-type-deadline .event-pill-dot, .event-type-proposal_deadline .event-pill-dot { background-color: var(--color-event-deadline); }
 
 /* --- TASKS VIEW --- */
 .tasks-kanban-board-container { overflow-x: auto; padding-bottom: var(--spacing-md); }
