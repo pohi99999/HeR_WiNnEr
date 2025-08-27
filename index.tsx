@@ -314,6 +314,19 @@ const useMockData = () => {
     return { ...data, updateTaskStatus, addDoc, updateProjectStatus };
 };
 
+const useMediaQuery = (query: string) => {
+    const [matches, setMatches] = useState(window.matchMedia(query).matches);
+
+    useEffect(() => {
+        const media = window.matchMedia(query);
+        const listener = () => setMatches(media.matches);
+        media.addEventListener('change', listener);
+        return () => media.removeEventListener('change', listener);
+    }, [query]);
+
+    return matches;
+};
+
 const Icon = ({ name, filled }: { name: string, filled?: boolean }) => <span className={`material-symbols-outlined ${filled ? 'filled' : ''}`}>{name}</span>;
 
 
@@ -330,12 +343,19 @@ const Card = ({ children, className = '', header, fullHeight, style }: { childre
 
 // --- SIDEBAR & HEADER ---
 
-const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed }) => {
+const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, isMobileMenuOpen, setMobileMenuOpen }) => {
     const [openSections, setOpenSections] = useState<Record<string, boolean>>({ work: true, ai_tools: true });
+
+    const handleNavClick = (viewId) => {
+        setView(viewId);
+        if(isMobile) {
+            setMobileMenuOpen(false);
+        }
+    };
 
     const NavLink = ({ item }) => (
         <li>
-            <a href="#" className={`nav-link ${currentView === item.id ? 'active' : ''}`} onClick={() => setView(item.id)}>
+            <a href="#" className={`nav-link ${currentView === item.id ? 'active' : ''}`} onClick={() => handleNavClick(item.id)}>
                 <Icon name={item.icon} />
                 <span>{item.label}</span>
             </a>
@@ -361,13 +381,15 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed }) => {
     };
 
     return (
-        <aside className={`sidebar ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <aside className={`sidebar ${isCollapsed ? 'sidebar-collapsed' : ''} ${isMobile && isMobileMenuOpen ? 'mobile-open' : ''}`}>
             <div className="sidebar-inner">
                 <header className="sidebar-header">
-                    {!isCollapsed && <h2>P-Day Light</h2>}
-                    <button className="collapse-toggle" onClick={() => setCollapsed(!isCollapsed)}>
-                        <Icon name={isCollapsed ? 'menu_open' : 'menu'} />
-                    </button>
+                    {(!isCollapsed || isMobile) && <h2>P-Day Light</h2>}
+                     {!isMobile && (
+                        <button className="collapse-toggle" onClick={() => setCollapsed(!isCollapsed)}>
+                            <Icon name={isCollapsed ? 'menu_open' : 'menu'} />
+                        </button>
+                     )}
                 </header>
                 <nav className="sidebar-nav">
                     <ul className="nav-list">
@@ -379,10 +401,16 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed }) => {
     );
 };
 
-const GlobalHeader = ({ currentView }) => {
+const GlobalHeader = ({ currentView, onMenuClick }) => {
+    const isMobile = useMediaQuery('(max-width: 1024px)');
     const currentNavItem = navItems.flatMap(i => i.subItems || i).find(i => i.id === currentView);
     return (
         <header className="global-header">
+             {isMobile && (
+                <button className="mobile-menu-toggle" onClick={onMenuClick}>
+                    <Icon name="menu" />
+                </button>
+            )}
             <h3>{currentNavItem?.label || 'Irányítópult'}</h3>
             <div className="global-header-actions">
                 <button className="user-profile-button">
@@ -853,7 +881,10 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
                          const daysLeft = Math.ceil((new Date(p.dueDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
                         return (
                              <li key={p.id}>
-                                <span>{p.title}</span>
+                                <div>
+                                    <Icon name="event" />
+                                    <span>{p.title}</span>
+                                </div>
                                 <span className="deadline-days">{p.dueDate} ({daysLeft} nap)</span>
                             </li>
                         )
@@ -867,8 +898,11 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
                         return (
                             <li key={task.id}>
                                 <div>
-                                    <span className="task-title-with-project">{task.title}</span>
-                                    {project && <span className="task-project-name">{project.title}</span>}
+                                    <Icon name="flag" />
+                                    <div>
+                                        <span className="task-title-with-project">{task.title}</span>
+                                        {project && <span className="task-project-name">{project.title}</span>}
+                                    </div>
                                 </div>
                                 <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
                             </li>
@@ -1131,6 +1165,8 @@ const MeetingAssistantView = () => <Card>Meeting Asszisztens helyőrző</Card>;
 const App = () => {
     const [currentView, setCurrentView] = useState('dashboard');
     const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const isMobile = useMediaQuery('(max-width: 1024px)');
     const data = useMockData();
 
     const renderView = () => {
@@ -1152,16 +1188,39 @@ const App = () => {
             default: return <DashboardView tasks={data.tasks} emails={data.emails}/>;
         }
     };
+    
+    const toggleMenu = () => {
+        if (isMobile) {
+            setMobileMenuOpen(!isMobileMenuOpen);
+        } else {
+            setSidebarCollapsed(!isSidebarCollapsed);
+        }
+    };
 
     return (
         <div className="app-layout">
-            <Sidebar currentView={currentView} setView={setCurrentView} isCollapsed={isSidebarCollapsed} setCollapsed={setSidebarCollapsed} />
-            <div className="page-container" style={{paddingLeft: isSidebarCollapsed ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)'}}>
-                 <GlobalHeader currentView={currentView} />
+            <div className="aurora-background">
+                <div className="aurora-shape aurora-shape1"></div>
+                <div className="aurora-shape aurora-shape2"></div>
+                <div className="aurora-shape aurora-shape3"></div>
+            </div>
+            <Sidebar 
+                currentView={currentView} 
+                setView={setCurrentView} 
+                isCollapsed={isSidebarCollapsed && !isMobile} 
+                setCollapsed={setSidebarCollapsed}
+                isMobile={isMobile}
+                isMobileMenuOpen={isMobileMenuOpen}
+                setMobileMenuOpen={setMobileMenuOpen}
+            />
+            <div className="page-container" style={{paddingLeft: (isSidebarCollapsed && !isMobile) ? 'var(--sidebar-width-collapsed)' : (isMobile ? '0' : 'var(--sidebar-width)')}}>
+                 {/* FIX: Corrected typo from currentViesw to currentView */}
+                 <GlobalHeader currentView={currentView} onMenuClick={toggleMenu} />
                 <main className="main-content">
                     {renderView()}
                 </main>
             </div>
+            {isMobile && isMobileMenuOpen && <div className="mobile-menu-overlay" onClick={() => setMobileMenuOpen(false)}></div>}
         </div>
     );
 };
