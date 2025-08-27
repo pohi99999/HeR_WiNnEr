@@ -254,7 +254,8 @@ const navItems: NavItem[] = [
     { id: 'email', label: 'Email', icon: 'mail' },
     {
         id: 'work', label: 'Munka', icon: 'work', subItems: [
-            { id: 'projects', label: 'Projektek', icon: 'assignment' },
+            { id: 'project_overview', label: 'Projekt Áttekintés', icon: 'monitoring' },
+            { id: 'projects_kanban', label: 'Projekt Kanban', icon: 'view_kanban' },
             { id: 'proposals', label: 'Pályázatok', icon: 'description' },
             { id: 'trainings', label: 'Képzések', icon: 'school' },
             { id: 'contacts', label: 'Névjegyek', icon: 'contacts' },
@@ -733,7 +734,7 @@ const ProjectKanbanColumn = ({ status, projects, tasks, onDropProject }) => {
     );
 };
 
-const ProjectsView = ({ projects, tasks, updateProjectStatus }) => {
+const ProjectsKanbanView = ({ projects, tasks, updateProjectStatus }) => {
     const statuses: ProjectStatus[] = ['Tervezés', 'Fejlesztés', 'Tesztelés', 'Kész'];
      const projectsByStatus = statuses.reduce((acc, status) => {
         acc[status] = projects.filter(p => p.status === status);
@@ -761,6 +762,124 @@ const ProjectsView = ({ projects, tasks, updateProjectStatus }) => {
         </DndProvider>
     );
 };
+
+const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: TaskItem[] }) => {
+    const statusOrder: ProjectStatus[] = ['Tervezés', 'Fejlesztés', 'Tesztelés', 'Kész'];
+    const statusColors = {
+        'Tervezés': '#3498db',
+        'Fejlesztés': '#f39c12',
+        'Tesztelés': '#9b59b6',
+        'Kész': '#34d399'
+    };
+
+    const projectsByStatus = statusOrder.reduce((acc, status) => {
+        acc[status] = projects.filter(p => p.status === status);
+        return acc;
+    }, {} as Record<ProjectStatus, Project[]>);
+
+    const totalProjects = projects.length;
+
+    const upcomingDeadlines = projects
+        .filter(p => p.dueDate && new Date(p.dueDate) >= new Date())
+        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+        .slice(0, 5);
+
+    const keyTasks = tasks
+        .filter(t => (t.priority === 'Kritikus' || t.priority === 'Magas') && t.status !== 'Kész' && t.projectId)
+        .slice(0, 5);
+        
+    const getProjectById = (id: string) => projects.find(p => p.id === id);
+
+    const DonutChart = () => {
+        const radius = 80;
+        const strokeWidth = 25;
+        const circumference = 2 * Math.PI * radius;
+        let accumulatedPercentage = 0;
+
+        return (
+            <div className="donut-chart-container">
+                <svg className="donut-chart" viewBox="0 0 200 200">
+                    <circle className="donut-hole" cx="100" cy="100" r={radius - strokeWidth / 2} fill="transparent"></circle>
+                    <circle className="donut-ring" cx="100" cy="100" r={radius} fill="transparent" strokeWidth={strokeWidth}></circle>
+                    {statusOrder.map(status => {
+                        const percentage = totalProjects > 0 ? (projectsByStatus[status].length / totalProjects) * 100 : 0;
+                        const offset = circumference - (accumulatedPercentage / 100) * circumference;
+                        accumulatedPercentage += percentage;
+                        if (percentage === 0) return null;
+                        return (
+                            <circle
+                                key={status}
+                                className="donut-segment"
+                                cx="100"
+                                cy="100"
+                                r={radius}
+                                fill="transparent"
+                                stroke={statusColors[status]}
+                                strokeWidth={strokeWidth}
+                                strokeDasharray={`${circumference} ${circumference}`}
+                                strokeDashoffset={offset}
+                                transform="rotate(-90 100 100)"
+                            />
+                        );
+                    })}
+                </svg>
+                <div className="chart-center-text">
+                    <span className="total-count">{totalProjects}</span>
+                    <span>Projekt</span>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="view-fade-in project-overview-grid">
+            <Card header={<h4>Projektek Státusz Szerint</h4>} className="stagger-item">
+                <div className="chart-card-content">
+                    <DonutChart />
+                    <ul className="chart-legend">
+                        {statusOrder.map(status => (
+                            <li key={status}>
+                                <span className="legend-dot" style={{ backgroundColor: statusColors[status] }}></span>
+                                <span>{status}</span>
+                                <span className="legend-count">{projectsByStatus[status].length}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </Card>
+            <Card header={<h4>Közelgő Határidők</h4>} className="stagger-item" style={{ animationDelay: '100ms' }}>
+                <ul className="quick-list">
+                    {upcomingDeadlines.map(p => {
+                         const daysLeft = Math.ceil((new Date(p.dueDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
+                        return (
+                             <li key={p.id}>
+                                <span>{p.title}</span>
+                                <span className="deadline-days">{p.dueDate} ({daysLeft} nap)</span>
+                            </li>
+                        )
+                    })}
+                </ul>
+            </Card>
+             <Card header={<h4>Kiemelt Feladatok</h4>} className="stagger-item" style={{ gridColumn: '1 / -1', animationDelay: '200ms' }}>
+                 <ul className="quick-list">
+                    {keyTasks.map(task => {
+                        const project = getProjectById(task.projectId);
+                        return (
+                            <li key={task.id}>
+                                <div>
+                                    <span className="task-title-with-project">{task.title}</span>
+                                    {project && <span className="task-project-name">{project.title}</span>}
+                                </div>
+                                <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
+                            </li>
+                        );
+                    })}
+                </ul>
+            </Card>
+        </div>
+    );
+};
+
 
 const ProposalCard = ({ proposal }: { proposal: Proposal }) => (
     <div className="proposal-card stagger-item">
@@ -1020,7 +1139,8 @@ const App = () => {
             case 'planner': return <PlannerView events={data.plannerEvents} />;
             case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus} />;
             case 'email': return <EmailView emails={data.emails} />;
-            case 'projects': return <ProjectsView projects={data.projects} tasks={data.tasks} updateProjectStatus={data.updateProjectStatus} />;
+            case 'project_overview': return <ProjectOverviewView projects={data.projects} tasks={data.tasks} />;
+            case 'projects_kanban': return <ProjectsKanbanView projects={data.projects} tasks={data.tasks} updateProjectStatus={data.updateProjectStatus} />;
             case 'proposals': return <ProposalsView proposals={data.proposals} />;
             case 'trainings': return <TrainingsView trainings={data.trainings} />;
             case 'contacts': return <ContactsView contacts={data.contacts} />;
