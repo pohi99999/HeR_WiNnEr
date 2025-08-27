@@ -1220,7 +1220,13 @@ const App = () => {
                     {renderView()}
                 </main>
             </div>
-            {isMobile && isMobileMenuOpen && <div className="mobile-menu-overlay" onClick={() => setMobileMenuOpen(false)}></div>}
+            {isMobile && (
+                <div 
+                    className={`mobile-menu-overlay ${isMobileMenuOpen ? 'open' : ''}`} 
+                    onClick={() => setMobileMenuOpen(false)}
+                    aria-hidden={!isMobileMenuOpen}
+                ></div>
+            )}
         </div>
     );
 };
