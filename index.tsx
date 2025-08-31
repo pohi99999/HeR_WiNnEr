@@ -4,6 +4,8 @@
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
+// FIX: Import createPortal from 'react-dom' as it is not available in 'react-dom/client'.
+import { createPortal } from 'react-dom';
 import { GoogleGenAI, Chat, GenerateContentResponse, Content, Part, Type, FunctionDeclaration, Tool, SendMessageParameters, Modality } from "@google/genai";
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
@@ -240,7 +242,7 @@ const mockPlannerEvents: PlannerEvent[] = [
 ];
 
 const mockEmails: EmailMessage[] = [
-    { id: 'email-1', sender: 'Dénes', recipient: 'Felhasználó', subject: 'Marketing kampány', body: 'Szia, átküldtem a legújabb anyagokat. Kérlek nézd át őket. Köszi, Dénes', timestamp: new Date().toISOString(), read: false, important: true, category: 'inbox' },
+    { id: 'email-1', sender: 'Dénes', recipient: 'Felhasználó', subject: 'Marketing kampány', body: 'Szia, átküldtem a legújabb anyagokat. Kérlek nézd át őket a hét végéig. Köszi, Dénes', timestamp: new Date().toISOString(), read: false, important: true, category: 'inbox' },
     { id: 'email-2', sender: 'Kovács Gábor', recipient: 'Felhasználó', subject: 'Ismerkedő megbeszélés', body: 'Kedves Felhasználó! A jövő hét megfelelő lenne egy rövid megbeszélésre? Üdv, Kovács Gábor', timestamp: new Date(Date.now() - 86400000).toISOString(), read: true, important: false, category: 'inbox' },
     { id: 'email-3', sender: 'Felhasználó', recipient: 'Béla', subject: 'Re: API bug', body: 'Szia Béla, találtam egy hibát a /users végponton. Ránéznél?', timestamp: new Date(Date.now() - 172800000).toISOString(), read: true, important: false, category: 'sent' },
 ];
@@ -310,8 +312,17 @@ const useMockData = () => {
     const addDoc = (doc: DocItem) => {
         setData(prev => ({...prev, docs: [doc, ...prev.docs]}));
     }
+    
+    const addTask = (task: Omit<TaskItem, 'id' | 'createdAt'>) => {
+        const newTask: TaskItem = {
+            ...task,
+            id: generateId(),
+            createdAt: new Date().toISOString()
+        };
+        setData(prev => ({ ...prev, tasks: [newTask, ...prev.tasks] }));
+    }
 
-    return { ...data, updateTaskStatus, addDoc, updateProjectStatus };
+    return { ...data, updateTaskStatus, addDoc, updateProjectStatus, addTask };
 };
 
 const useMediaQuery = (query: string) => {
@@ -340,6 +351,44 @@ const Card = ({ children, className = '', header, fullHeight, style }: { childre
         </div>
     </div>
 );
+
+const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) => {
+    if (!isOpen) return null;
+
+    // FIX: Use createPortal from 'react-dom' directly.
+    return createPortal(
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>{title}</h3>
+                    <button onClick={onClose} className="btn btn-icon btn-secondary"><Icon name="close" /></button>
+                </div>
+                <div className="modal-body">
+                    {children}
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
+const NotificationComponent = ({ notification, onDismiss }: { notification: Notification, onDismiss: (id: string) => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            onDismiss(notification.id);
+        }, 5000);
+        return () => clearTimeout(timer);
+    }, [notification, onDismiss]);
+
+    return (
+        <div className={`notification notification-${notification.type}`}>
+            <Icon name={notification.type === 'success' ? 'check_circle' : 'error'} />
+            <p>{notification.message}</p>
+            <button onClick={() => onDismiss(notification.id)} className="dismiss-btn"><Icon name="close" /></button>
+        </div>
+    );
+};
+
 
 // --- SIDEBAR & HEADER ---
 
@@ -633,10 +682,13 @@ const TasksView = ({ tasks, updateTaskStatus }: { tasks: TaskItem[], updateTaskS
     );
 };
 
-const EmailView = ({ emails: initialEmails }) => {
+const EmailView = ({ emails: initialEmails, addTask, addNotification }) => {
     const [emails, setEmails] = useState(initialEmails);
     const [selectedEmailId, setSelectedEmailId] = useState<string | null>(emails.find(e => e.category === 'inbox')?.id || null);
     const [activeCategory, setActiveCategory] = useState<'inbox' | 'sent'>('inbox');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [showTaskModal, setShowTaskModal] = useState(false);
+    const [aiGeneratedTask, setAiGeneratedTask] = useState<Partial<TaskItem> | null>(null);
     
     const selectedEmail = emails.find(e => e.id === selectedEmailId);
 
@@ -647,6 +699,65 @@ const EmailView = ({ emails: initialEmails }) => {
 
     const toggleImportance = (id: string) => {
         setEmails(emails.map(e => e.id === id ? { ...e, important: !e.important } : e));
+    };
+    
+    const handleCreateTaskFromEmail = async () => {
+        if (!selectedEmail) return;
+        setIsProcessing(true);
+        try {
+            const schema = {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING, description: "A tömör, egyértelmű feladatcím, legfeljebb 10 szó." },
+                    description: { type: Type.STRING, description: "A feladat részletes leírása az email törzséből." },
+                    dueDate: { type: Type.STRING, description: "A feladat határideje YYYY-MM-DD formátumban. Ha nincs konkrét dátum említve, legyen null." }
+                },
+                required: ["title", "description"]
+            };
+
+            const prompt = `
+                Elemezd a következő emailt és vonj ki belőle egy feladatot.
+                Email Tárgy: ${selectedEmail.subject}
+                Email Szöveg: ${selectedEmail.body}
+                A mai dátum: ${new Date().toISOString().split('T')[0]}. Használd ezt kontextusként relatív dátumokhoz (pl. "holnap", "hétvége").
+                Add meg a kimenetet a megadott séma szerinti JSON formátumban.
+            `;
+
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+                config: { responseMimeType: "application/json", responseSchema: schema },
+            });
+
+            const taskData = JSON.parse(response.text);
+            setAiGeneratedTask({
+                title: taskData.title || '',
+                description: taskData.description || '',
+                dueDate: taskData.dueDate || undefined,
+            });
+            setShowTaskModal(true);
+
+        } catch (error) {
+            console.error("Error generating task from email:", error);
+            addNotification({ message: 'Hiba történt a feladat létrehozása során.', type: 'error' });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleSaveTask = (taskData: Partial<TaskItem>) => {
+        const finalTask = {
+            title: taskData.title,
+            description: taskData.description,
+            dueDate: taskData.dueDate,
+            priority: taskData.priority || 'Közepes',
+            status: taskData.status || 'Teendő',
+            category: 'Email'
+        };
+        addTask(finalTask);
+        setShowTaskModal(false);
+        setAiGeneratedTask(null);
+        addNotification({ message: 'Feladat sikeresen létrehozva!', type: 'success' });
     };
 
     const visibleEmails = emails.filter(e => e.category === activeCategory);
@@ -684,9 +795,15 @@ const EmailView = ({ emails: initialEmails }) => {
                              <>
                                 <div className="email-content-header">
                                     <h3>{selectedEmail.subject}</h3>
-                                     <button className="btn btn-icon btn-secondary" onClick={() => toggleImportance(selectedEmail.id)}>
-                                        <Icon name="star" filled={selectedEmail.important} />
-                                    </button>
+                                    <div className="email-content-actions">
+                                        <button className="btn btn-secondary btn-icon-text" onClick={handleCreateTaskFromEmail} disabled={isProcessing}>
+                                            <Icon name={isProcessing ? 'progress_activity' : 'auto_awesome'} />
+                                            {isProcessing ? 'Feldolgozás...' : 'Feladat Létrehozása'}
+                                        </button>
+                                        <button className="btn btn-icon btn-secondary" onClick={() => toggleImportance(selectedEmail.id)}>
+                                            <Icon name="star" filled={selectedEmail.important} />
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="email-content-meta">
                                     <p><strong>Feladó:</strong> {selectedEmail.sender}</p>
@@ -703,9 +820,59 @@ const EmailView = ({ emails: initialEmails }) => {
                     </div>
                  </div>
             </Card>
+            {aiGeneratedTask && (
+                <TaskCreationModal 
+                    isOpen={showTaskModal}
+                    onClose={() => setShowTaskModal(false)}
+                    initialTaskData={aiGeneratedTask}
+                    onSave={handleSaveTask}
+                />
+            )}
         </div>
     );
 };
+
+const TaskCreationModal = ({ isOpen, onClose, initialTaskData, onSave }) => {
+    const [taskData, setTaskData] = useState(initialTaskData);
+
+    useEffect(() => {
+        setTaskData(initialTaskData);
+    }, [initialTaskData]);
+    
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setTaskData(prev => ({...prev, [name]: value}));
+    };
+    
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(taskData);
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Új feladat létrehozása Emailből">
+            <form onSubmit={handleSubmit} className="modal-form">
+                <div className="form-group">
+                    <label htmlFor="title">Cím</label>
+                    <input type="text" id="title" name="title" value={taskData.title || ''} onChange={handleChange} required />
+                </div>
+                <div className="form-group">
+                    <label htmlFor="description">Leírás</label>
+                    <textarea id="description" name="description" value={taskData.description || ''} onChange={handleChange} rows={4}></textarea>
+                </div>
+                <div className="form-group">
+                    <label htmlFor="dueDate">Határidő</label>
+                    <input type="date" id="dueDate" name="dueDate" value={taskData.dueDate || ''} onChange={handleChange} />
+                </div>
+                 <div className="form-actions">
+                    <button type="button" className="btn btn-secondary" onClick={onClose}>Mégse</button>
+                    <button type="submit" className="btn btn-primary">Mentés</button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
 
 const ProjectCard = ({ project, tasks }) => {
     const ref = useRef(null);
@@ -1166,15 +1333,25 @@ const App = () => {
     const [currentView, setCurrentView] = useState('dashboard');
     const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
     const isMobile = useMediaQuery('(max-width: 1024px)');
     const data = useMockData();
+
+    const addNotification = (notification: Omit<Notification, 'id'>) => {
+        const id = generateId();
+        setNotifications(prev => [...prev, { id, ...notification }]);
+    };
+    
+    const dismissNotification = (id: string) => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    };
 
     const renderView = () => {
         switch (currentView) {
             case 'dashboard': return <DashboardView tasks={data.tasks} emails={data.emails} />;
             case 'planner': return <PlannerView events={data.plannerEvents} />;
             case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus} />;
-            case 'email': return <EmailView emails={data.emails} />;
+            case 'email': return <EmailView emails={data.emails} addTask={data.addTask} addNotification={addNotification} />;
             case 'project_overview': return <ProjectOverviewView projects={data.projects} tasks={data.tasks} />;
             case 'projects_kanban': return <ProjectsKanbanView projects={data.projects} tasks={data.tasks} updateProjectStatus={data.updateProjectStatus} />;
             case 'proposals': return <ProposalsView proposals={data.proposals} />;
@@ -1199,6 +1376,11 @@ const App = () => {
 
     return (
         <div className="app-layout">
+            <div className="notification-container">
+                {notifications.map(n => (
+                    <NotificationComponent key={n.id} notification={n} onDismiss={dismissNotification} />
+                ))}
+            </div>
             <div className="aurora-background">
                 <div className="aurora-shape aurora-shape1"></div>
                 <div className="aurora-shape aurora-shape2"></div>
