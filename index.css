@@ -481,7 +481,6 @@ body::after {
     align-items: center;
     justify-content: space-around;
     gap: var(--spacing-lg);
-    padding: var(--spacing-md);
     flex-wrap: wrap;
 }
 
@@ -930,6 +929,122 @@ body::after {
 }
 .dismiss-btn:hover {
     color: var(--color-text-primary);
+}
+
+/* --- MIND MAP VIEW --- */
+.mind-map-view {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+    cursor: grab;
+    user-select: none;
+}
+.mind-map-view:active {
+    cursor: grabbing;
+}
+
+.mind-map-content {
+    width: fit-content;
+    height: fit-content;
+    transform-origin: 0 0;
+    position: absolute;
+    padding: 100px; /* Give some space around the root */
+}
+
+.mind-map-svg-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    transform-origin: 0 0;
+}
+
+.mind-map-connector {
+    stroke: rgba(var(--color-primary-rgb), 0.4);
+    stroke-width: 2px;
+    fill: none;
+    stroke-linecap: round;
+}
+
+.mind-map-tree,
+.mind-map-children {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.mind-map-node {
+    display: flex;
+    align-items: center;
+    margin: 0 var(--spacing-xxl);
+}
+
+.mind-map-children {
+    flex-direction: column;
+    align-items: flex-start;
+    padding-left: var(--spacing-xxl);
+}
+
+.mind-map-children .mind-map-node {
+    margin: var(--spacing-md) 0;
+}
+
+.mind-map-node-content {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius-md);
+    background-color: var(--color-surface-glass-light);
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.mind-map-node-content:hover {
+    background-color: var(--color-surface-glass-hover);
+    border-color: var(--color-border-strong);
+}
+
+.mind-map-node-content.color-primary {
+    background-color: rgba(var(--color-primary-rgb), 0.2);
+    border-color: rgba(var(--color-primary-rgb), 0.5);
+    font-weight: var(--font-weight-semibold);
+}
+
+.mind-map-node-content.color-accent {
+    background-color: rgba(var(--color-accent-rgb), 0.15);
+    border-color: rgba(var(--color-accent-rgb), 0.4);
+}
+
+.mind-map-node-content .material-symbols-outlined {
+    font-size: 1rem;
+    color: var(--color-text-secondary);
+}
+
+.mind-map-controls {
+    position: absolute;
+    bottom: var(--spacing-lg);
+    right: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    z-index: 10;
+}
+
+.mind-map-controls .btn-icon {
+    background-color: var(--color-surface-glass-light);
+    backdrop-filter: blur(10px);
+}
+.mind-map-controls .btn-icon:hover {
+    background-color: var(--color-surface-glass-hover);
 }
 
 

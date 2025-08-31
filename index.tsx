@@ -173,8 +173,47 @@ interface Contact {
     linkedProposalIds?: string[];
 }
 
+interface MindMapNode {
+  id: string;
+  label: string;
+  children?: MindMapNode[];
+  color?: 'primary' | 'secondary' | 'accent';
+  direction?: 'in' | 'out';
+}
 
 // --- MOCK DATA ---
+const mockMindMapData: MindMapNode = {
+  id: 'root',
+  label: 'Pohánka Kft. Digitális és Innovációs Stratégia',
+  color: 'primary',
+  children: [
+    {
+      id: 'n1', label: 'Vállalati Kettősség és Kihívások', direction: 'out', color: 'secondary', children: [
+        { id: 'n1-1', label: 'DIMOP Plusz-1.2.3/B-24 (Kiegészítő Hitelprogram)', direction: 'in', color: 'accent', children: [
+            { id: 'n1-1-1', label: 'Cél: MI infrastruktúra finanszírozása', color: 'accent'},
+            { id: 'n1-1-2', label: 'Kamatmentes hitel: 20-200 millió Ft', color: 'accent'},
+            { id: 'n1-1-3', label: 'Feltétel: Digitális érettség (valószínűleg megfelel)', color: 'accent'},
+        ]},
+      ]
+    },
+    { id: 'n2', label: 'Kétsávos Pályázati Stratégia', direction: 'out', color: 'secondary', children: [
+        { id: 'n2-1', label: 'EIC Accelerator (Nemzetközi, Hosszú Távú)', direction: 'out', color: 'accent'},
+    ] },
+    { id: 'n3', label: 'Pályázati Jogosultsági Profil', direction: 'out', color: 'secondary', children: [
+        { id: 'n3-1', label: 'OFA DigiKKV Program', color: 'accent' },
+    ] },
+    { id: 'n4', label: 'További Pályázati Lehetőségek', direction: 'in', color: 'secondary', children: [
+        { id: 'n4-1', label: 'Minden Vállalkozásnak Legyen Saját Honlapja Program', direction: 'out', color: 'accent' },
+    ] },
+    { id: 'n5', label: 'Cselekvési Terv és Javaslatok', direction: 'out', color: 'secondary', children: [
+        { id: 'n5-1', label: 'Modern Vállalkozások Program (MVP 2.0)', direction: 'out', color: 'accent'},
+        { id: 'n5-2', label: 'DIMOP Plusz-1.2.6-24: Nem releváns (területi kizárás)', color: 'accent'},
+        { id: 'n5-3', label: 'NKFIH Programok (Jövőbeli cél)', color: 'accent'},
+    ] },
+  ]
+};
+
+
 const mockContacts: Contact[] = [
     { id: 'contact-1', name: 'Dénes', company: 'P-Day Kft.', role: 'Marketing Vezető', email: 'denes@example.com', phone: '+36 30 123 4567', linkedProjectIds: ['proj-2', 'proj-4'] },
     { id: 'contact-2', name: 'Eszter', company: 'P-Day Kft.', role: 'Marketing Menedzser', email: 'eszter@example.com', linkedProjectIds: ['proj-2'] },
@@ -268,6 +307,7 @@ const navItems: NavItem[] = [
     {
         id: 'ai_tools', label: 'AI Eszközök', icon: 'smart_toy', subItems: [
             { id: 'gemini_chat', label: 'Gemini Chat', icon: 'chat' },
+            { id: 'mind_map', label: 'Stratégia Térkép', icon: 'account_tree' },
             { id: 'creative_tools', label: 'Kreatív Eszközök', icon: 'brush' },
             { id: 'meeting_assistant', label: 'Meeting Asszisztens', icon: 'mic' },
         ]
@@ -289,6 +329,7 @@ const useMockData = () => {
         tasks: mockTasks,
         plannerEvents: mockPlannerEvents,
         emails: mockEmails,
+        mindMap: mockMindMapData,
     });
 
     const updateTaskStatus = (taskId: string, newStatus: TaskStatus) => {
@@ -1328,6 +1369,174 @@ const GeminiChatView = () => <Card>Gemini Chat helyőrző</Card>;
 const CreativeToolsView = () => <Card>Kreatív Eszközök helyőrző</Card>;
 const MeetingAssistantView = () => <Card>Meeting Asszisztens helyőrző</Card>;
 
+const MindMapNodeComponent = ({ node, onUpdatePosition }) => {
+    const [isExpanded, setExpanded] = useState(true);
+    const nodeRef = useRef(null);
+
+    useEffect(() => {
+        const observer = new ResizeObserver(() => {
+            if (nodeRef.current) {
+                const rect = nodeRef.current.getBoundingClientRect();
+                onUpdatePosition(node.id, {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                });
+            }
+        });
+
+        if (nodeRef.current) {
+            observer.observe(nodeRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [node.id, onUpdatePosition]);
+
+    const hasChildren = node.children && node.children.length > 0;
+
+    return (
+        <li className="mind-map-node">
+            <div ref={nodeRef} className={`mind-map-node-content color-${node.color || 'secondary'}`} onClick={() => hasChildren && setExpanded(!isExpanded)}>
+                {node.label}
+                {node.direction && <Icon name={node.direction === 'in' ? 'arrow_back' : 'arrow_forward'} />}
+            </div>
+            {hasChildren && isExpanded && (
+                <ul className="mind-map-children">
+                    {node.children.map(child => (
+                        <MindMapNodeComponent key={child.id} node={child} onUpdatePosition={onUpdatePosition} />
+                    ))}
+                </ul>
+            )}
+        </li>
+    );
+};
+
+const ConnectorLine = ({ from, to, containerRect }) => {
+    if (!from || !to) return null;
+    
+    const startX = (from.direction === 'out' ? from.x + from.width : from.x) - containerRect.x;
+    const startY = from.y + from.height / 2 - containerRect.y;
+    const endX = (to.direction === 'in' || !to.direction ? to.x : to.x + to.width) - containerRect.x;
+    const endY = to.y + to.height / 2 - containerRect.y;
+
+    const controlX1 = startX + (endX - startX) * 0.5;
+    const controlY1 = startY;
+    const controlX2 = startX + (endX - startX) * 0.5;
+    const controlY2 = endY;
+
+    const pathData = `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
+
+    return <path d={pathData} className="mind-map-connector" />;
+};
+
+
+const MindMapView = ({ data }) => {
+    const [pan, setPan] = useState({ x: 0, y: 0 });
+    const [scale, setScale] = useState(1);
+    const [isPanning, setIsPanning] = useState(false);
+    const [startPoint, setStartPoint] = useState({ x: 0, y: 0 });
+    const [nodePositions, setNodePositions] = useState({});
+    
+    const containerRef = useRef(null);
+    const contentRef = useRef(null);
+
+    const handleUpdatePosition = useCallback((id, rect) => {
+        setNodePositions(prev => ({
+            ...prev,
+            [id]: { ...rect, id }
+        }));
+    }, []);
+
+    const handleMouseDown = (e) => {
+        e.preventDefault();
+        setIsPanning(true);
+        setStartPoint({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    };
+
+    const handleMouseMove = (e) => {
+        if (!isPanning) return;
+        setPan({
+            x: e.clientX - startPoint.x,
+            y: e.clientY - startPoint.y,
+        });
+    };
+
+    const handleMouseUp = () => {
+        setIsPanning(false);
+    };
+
+    const handleWheel = (e) => {
+        e.preventDefault();
+        const newScale = Math.min(Math.max(0.2, scale - e.deltaY * 0.001), 2);
+        setScale(newScale);
+    };
+    
+    const zoom = (factor) => {
+        setScale(prev => Math.min(Math.max(0.2, prev * factor), 2));
+    }
+    
+    const [connections, setConnections] = useState([]);
+    const containerRect = containerRef.current?.getBoundingClientRect();
+
+    useEffect(() => {
+        const newConnections = [];
+        const findConnections = (node) => {
+            if (node.children) {
+                node.children.forEach(child => {
+                    newConnections.push({ from: node.id, to: child.id });
+                    findConnections(child);
+                });
+            }
+        };
+        findConnections(data);
+        setConnections(newConnections);
+    }, [data, nodePositions]);
+
+
+    return (
+        <div className="view-fade-in" style={{height: '100%', display: 'flex', flexDirection: 'column'}}>
+            <Card fullHeight>
+                <div 
+                    className="mind-map-view" 
+                    ref={containerRef}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                    onWheel={handleWheel}
+                >
+                    <div 
+                        className="mind-map-content" 
+                        ref={contentRef}
+                        style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
+                    >
+                         <ul className="mind-map-tree">
+                            <MindMapNodeComponent node={data} onUpdatePosition={handleUpdatePosition} />
+                        </ul>
+                    </div>
+                     <svg className="mind-map-svg-layer" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}>
+                        {containerRect && connections.map(conn => (
+                             <ConnectorLine 
+                                key={`${conn.from}-${conn.to}`}
+                                from={nodePositions[conn.from]}
+                                to={nodePositions[conn.to]}
+                                containerRect={{x: pan.x, y: pan.y, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0, toJSON: () => ({})}}
+                             />
+                        ))}
+                    </svg>
+
+                     <div className="mind-map-controls">
+                        <button className="btn btn-icon" onClick={() => zoom(1.2)}><Icon name="add"/></button>
+                        <button className="btn btn-icon" onClick={() => zoom(0.8)}><Icon name="remove"/></button>
+                        <button className="btn btn-icon" onClick={() => { setPan({x:0, y:0}); setScale(1); }}><Icon name="center_focus_strong"/></button>
+                    </div>
+                </div>
+            </Card>
+        </div>
+    );
+};
+
 
 const App = () => {
     const [currentView, setCurrentView] = useState('dashboard');
@@ -1360,6 +1569,7 @@ const App = () => {
             case 'finances': return <FinancesView transactions={data.transactions} budgets={data.budgets} />;
             case 'docs': return <DocsView docs={data.docs} addDoc={data.addDoc} />;
             case 'gemini_chat': return <GeminiChatView />;
+            case 'mind_map': return <MindMapView data={data.mindMap} />;
             case 'creative_tools': return <CreativeToolsView />;
             case 'meeting_assistant': return <MeetingAssistantView />;
             default: return <DashboardView tasks={data.tasks} emails={data.emails}/>;
