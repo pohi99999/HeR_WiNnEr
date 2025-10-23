@@ -384,7 +384,8 @@ const Icon = ({ name, filled }: { name: string, filled?: boolean }) => <span cla
 
 // --- UI COMPONENTS ---
 
-const Card = ({ children, className = '', header, fullHeight, style }: { children: React.ReactNode, className?: string, header?: React.ReactNode, fullHeight?: boolean, style?: React.CSSProperties }) => (
+// FIX: Make children optional to handle type errors from the language server.
+const Card = ({ children, className = '', header, fullHeight, style }: { children?: React.ReactNode, className?: string, header?: React.ReactNode, fullHeight?: boolean, style?: React.CSSProperties }) => (
     <div className={`card ${className}`} style={{ height: fullHeight ? '100%' : 'auto', ...style }}>
         {header && <div className="card-header">{header}</div>}
         <div className="card-body" style={{ height: fullHeight && header ? 'calc(100% - 65px)' : fullHeight ? '100%' : 'auto' }}>
@@ -393,7 +394,8 @@ const Card = ({ children, className = '', header, fullHeight, style }: { childre
     </div>
 );
 
-const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) => {
+// FIX: Make children optional to handle type errors from the language server.
+const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children?: React.ReactNode }) => {
     if (!isOpen) return null;
 
     // FIX: Use createPortal from 'react-dom' directly.
@@ -413,7 +415,8 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose:
     );
 };
 
-const NotificationComponent = ({ notification, onDismiss }: { notification: Notification, onDismiss: (id: string) => void }) => {
+// FIX: Change to React.FC to fix `key` prop type error.
+const NotificationComponent: React.FC<{ notification: Notification, onDismiss: (id: string) => void }> = ({ notification, onDismiss }) => {
     useEffect(() => {
         const timer = setTimeout(() => {
             onDismiss(notification.id);
@@ -443,7 +446,8 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
         }
     };
 
-    const NavLink = ({ item }) => (
+    // FIX: Change to React.FC to fix `key` prop type error.
+    const NavLink: React.FC<{ item: NavItem }> = ({ item }) => (
         <li>
             <a href="#" className={`nav-link ${currentView === item.id ? 'active' : ''}`} onClick={() => handleNavClick(item.id)}>
                 <Icon name={item.icon} />
@@ -452,7 +456,8 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
         </li>
     );
 
-    const NavSection = ({ item }) => {
+    // FIX: Change to React.FC to fix `key` prop type error.
+    const NavSection: React.FC<{ item: NavItem }> = ({ item }) => {
         const isOpen = openSections[item.id] || false;
         return (
             <li>
@@ -644,7 +649,8 @@ const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
     );
 };
 
-const TaskCard = ({ task }: { task: TaskItem }) => {
+// FIX: Change to React.FC to fix `key` prop type error.
+const TaskCard: React.FC<{ task: TaskItem }> = ({ task }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [{ isDragging }, drag] = useDrag(() => ({
         type: 'TASK',
@@ -670,7 +676,8 @@ const TaskCard = ({ task }: { task: TaskItem }) => {
     );
 };
 
-const KanbanColumn = ({ status, tasks, onDropTask }: { status: TaskStatus, tasks: TaskItem[], onDropTask: (taskId: string, newStatus: TaskStatus) => void }) => {
+// FIX: Change to React.FC to fix `key` prop type error.
+const KanbanColumn: React.FC<{ status: TaskStatus, tasks: TaskItem[], onDropTask: (taskId: string, newStatus: TaskStatus) => void }> = ({ status, tasks, onDropTask }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [{ isOver }, drop] = useDrop(() => ({
         accept: 'TASK',
@@ -915,7 +922,8 @@ const TaskCreationModal = ({ isOpen, onClose, initialTaskData, onSave }) => {
 };
 
 
-const ProjectCard = ({ project, tasks }) => {
+// FIX: Change to React.FC to fix `key` prop type error.
+const ProjectCard: React.FC<{ project: Project, tasks: TaskItem[] }> = ({ project, tasks }) => {
     const ref = useRef(null);
     const [{ isDragging }, drag] = useDrag(() => ({
         type: 'PROJECT',
@@ -947,7 +955,8 @@ const ProjectCard = ({ project, tasks }) => {
     );
 };
 
-const ProjectKanbanColumn = ({ status, projects, tasks, onDropProject }) => {
+// FIX: Change to React.FC to fix `key` prop type error.
+const ProjectKanbanColumn: React.FC<{ status: ProjectStatus, projects: Project[], tasks: TaskItem[], onDropProject: (id: string, newStatus: ProjectStatus) => void }> = ({ status, projects, tasks, onDropProject }) => {
     const ref = useRef(null);
     const [{ isOver }, drop] = useDrop(() => ({
         accept: 'PROJECT',
@@ -1123,7 +1132,8 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
 };
 
 
-const ProposalCard = ({ proposal }: { proposal: Proposal }) => (
+// FIX: Change to React.FC to fix `key` prop type error.
+const ProposalCard: React.FC<{ proposal: Proposal }> = ({ proposal }) => (
     <div className="proposal-card stagger-item">
         <div className="proposal-card-header">
             <h3 className="proposal-title">{proposal.title}</h3>
@@ -1202,7 +1212,8 @@ const TrainingsView = ({ trainings }: { trainings: TrainingItem[] }) => {
     );
 };
 
-const ContactCard = ({ contact }: { contact: Contact }) => {
+// FIX: Change to React.FC to fix `key` prop type error.
+const ContactCard: React.FC<{ contact: Contact }> = ({ contact }) => {
     const initial = contact.name.charAt(0).toUpperCase();
 
     return (
@@ -1342,7 +1353,8 @@ const DocsView = ({ docs: initialDocs, addDoc }) => {
         setContent('');
     }
 
-    const DocCard = ({ doc }: { doc: DocItem }) => {
+    // FIX: Change to React.FC to fix `key` prop type error.
+    const DocCard: React.FC<{ doc: DocItem }> = ({ doc }) => {
         switch(doc.type) {
             case 'note': return <div className="doc-card note-card"><h4>{doc.title}</h4><p>{doc.content.substring(0, 100)}...</p></div>
             case 'link': return <div className="doc-card link-card"><Icon name="link"/><h4>{doc.title}</h4><a href={doc.content} target="_blank">{doc.content}</a></div>
@@ -1369,7 +1381,8 @@ const GeminiChatView = () => <Card>Gemini Chat helyőrző</Card>;
 const CreativeToolsView = () => <Card>Kreatív Eszközök helyőrző</Card>;
 const MeetingAssistantView = () => <Card>Meeting Asszisztens helyőrző</Card>;
 
-const MindMapNodeComponent = ({ node, onUpdatePosition }) => {
+// FIX: Change to React.FC to fix `key` prop type error.
+const MindMapNodeComponent: React.FC<{ node: MindMapNode; onUpdatePosition: (id: string, rect: any) => void; }> = ({ node, onUpdatePosition }) => {
     const [isExpanded, setExpanded] = useState(true);
     const nodeRef = useRef(null);
 
@@ -1412,7 +1425,8 @@ const MindMapNodeComponent = ({ node, onUpdatePosition }) => {
     );
 };
 
-const ConnectorLine = ({ from, to, containerRect }) => {
+// FIX: Change to React.FC to fix `key` prop type error.
+const ConnectorLine: React.FC<{ from: any; to: any; containerRect: any; }> = ({ from, to, containerRect }) => {
     if (!from || !to) return null;
     
     const startX = (from.direction === 'out' ? from.x + from.width : from.x) - containerRect.x;
