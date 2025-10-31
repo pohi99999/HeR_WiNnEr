@@ -1,3 +1,5 @@
+
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -13,11 +15,18 @@ import remarkGfm from 'remark-gfm';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+// FIX: Define the AIStudio interface to resolve type conflict for window.aistudio.
+interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+}
 
 declare global {
     interface Window {
         SpeechRecognition: any;
         webkitSpeechRecognition: any;
+        // FIX: Use the newly defined AIStudio interface for the 'aistudio' property.
+        aistudio: AIStudio;
     }
 }
 
@@ -227,7 +236,7 @@ const mockDocs: DocItem[] = [
     { id: 'doc-2', type: 'link', title: 'Gemini API Dokumentáció', content: 'https://ai.google.dev/gemini-api/docs', createdAt: new Date('2024-07-29').toISOString() },
     { id: 'doc-3', type: 'image', title: 'Új Logó Terv', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0NSIgZmlsbD0iI2YxYzQwZiIvPjxwYXRoIGQ9Ik01MCwyMEw3NSw3MEwyNSw3MFoiIGZpbGw9IiNlNzRhM2MiLz48L3N2Zz4=', createdAt: new Date('2024-07-28').toISOString() },
     { id: 'doc-4', type: 'note', title: 'Projekt V7 Ötletek', content: 'Felhasználói authentikáció OAuth2-vel. Adatbázis séma optimalizálása. Valós idejű értesítések implementálása WebSocket segítségével.', createdAt: new Date('2024-07-25').toISOString() },
-    { id: 'doc-5', type: 'image', title: 'AI által generált kép', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhZmU5ZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM1M2I4YjQiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg==', createdAt: new Date('2024-08-01').toISOString() }
+    { id: 'doc-5', type: 'image', title: 'AI által generált kép', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhZmU5ZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM1M2I4YjQiLz48L2xpbmVhcjxncmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg==', createdAt: new Date('2024-08-01').toISOString() }
 ];
 
 const mockProposals: Proposal[] = [
@@ -286,8 +295,6 @@ const mockEmails: EmailMessage[] = [
     { id: 'email-3', sender: 'Felhasználó', recipient: 'Béla', subject: 'Re: API bug', body: 'Szia Béla, találtam egy hibát a /users végponton. Ránéznél?', timestamp: new Date(Date.now() - 172800000).toISOString(), read: true, important: false, category: 'sent' },
 ];
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
 const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Irányítópult', icon: 'dashboard' },
     { id: 'planner', label: 'Tervező', icon: 'calendar_month' },
@@ -316,6 +323,20 @@ const navItems: NavItem[] = [
 
 // --- HELPER FUNCTIONS & HOOKS ---
 const generateId = () => `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+// Helper function to encode file to base64
+const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            const result = reader.result as string;
+            // Remove the data:image/png;base64, prefix
+            resolve(result.split(',')[1]);
+        };
+        reader.onerror = error => reject(error);
+    });
+};
 
 const useMockData = () => {
     const [data, setData] = useState({
@@ -771,6 +792,8 @@ const EmailView = ({ emails: initialEmails, addTask, addNotification }) => {
                 Add meg a kimenetet a megadott séma szerinti JSON formátumban.
             `;
 
+            // Initialize AI here to ensure it uses the latest API_KEY if updated by user
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
                 contents: prompt,
@@ -1378,8 +1401,394 @@ const DocsView = ({ docs: initialDocs, addDoc }) => {
 };
 
 const GeminiChatView = () => <Card>Gemini Chat helyőrző</Card>;
-const CreativeToolsView = () => <Card>Kreatív Eszközök helyőrző</Card>;
 const MeetingAssistantView = () => <Card>Meeting Asszisztens helyőrző</Card>;
+
+const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem) => void, addNotification: (notification: Omit<Notification, 'id'>) => void }) => {
+    const [activeTool, setActiveTool] = useState<'generate_image' | 'generate_video' | 'edit_image' | 'edit_video'>('generate_image');
+    const [prompt, setPrompt] = useState('');
+    const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+    const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
+    const [editedImageUrl, setEditedImageUrl] = useState<string | null>(null);
+    const [editedVideoUrl, setEditedVideoUrl] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('');
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [videoFile, setVideoFile] = useState<File | null>(null);
+    const [videoAspectRatio, setVideoAspectRatio] = useState<'16:9' | '9:16'>('16:9');
+    const [videoResolution, setVideoResolution] = useState<'720p' | '1080p'>('1080p');
+    const [hasVeoApiKey, setHasVeoApiKey] = useState(false); // State to track Veo API key status
+
+    useEffect(() => {
+        checkVeoApiKey();
+    }, []);
+
+    const checkVeoApiKey = async () => {
+        if (window.aistudio && window.aistudio.hasSelectedApiKey) {
+            const hasKey = await window.aistudio.hasSelectedApiKey();
+            setHasVeoApiKey(hasKey);
+        }
+    };
+
+    const handleSelectVeoApiKey = async () => {
+        if (window.aistudio && window.aistudio.openSelectKey) {
+            await window.aistudio.openSelectKey();
+            setHasVeoApiKey(true); // Assume success after opening dialog
+            addNotification({ message: 'API kulcs kiválasztva. Ha hiba történik, próbálja meg újra kiválasztani.', type: 'info' });
+        }
+    };
+
+    const handleGenerateImage = async () => {
+        if (!prompt) {
+            addNotification({ message: 'Kérjük, adjon meg egy leírást a kép generálásához.', type: 'error' });
+            return;
+        }
+        setIsGenerating(true);
+        setLoadingMessage('Kép generálása...');
+        setGeneratedImageUrl(null);
+        try {
+            const ai = new GoogleGenAI({ apiKey: API_KEY }); // Re-initialize for up-to-date key
+            const response = await ai.models.generateImages({
+                model: 'imagen-4.0-generate-001',
+                prompt: prompt,
+                config: { numberOfImages: 1, outputMimeType: 'image/jpeg', aspectRatio: '1:1' },
+            });
+
+            if (response.generatedImages && response.generatedImages.length > 0) {
+                const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
+                const imageUrl = `data:image/jpeg;base64,${base64ImageBytes}`;
+                setGeneratedImageUrl(imageUrl);
+                addNotification({ message: 'Kép sikeresen generálva!', type: 'success' });
+                addDoc({ id: generateId(), type: 'image', title: `Generált Kép: ${prompt.substring(0, 30)}`, content: imageUrl, createdAt: new Date().toISOString() });
+            } else {
+                addNotification({ message: 'A kép generálása sikertelen: Nincs kép a válaszban.', type: 'error' });
+            }
+        } catch (error: any) {
+            console.error("Error generating image:", error);
+            addNotification({ message: `Hiba a kép generálása során: ${error.message || 'Ismeretlen hiba'}`, type: 'error' });
+        } finally {
+            setIsGenerating(false);
+            setLoadingMessage('');
+        }
+    };
+
+    const handleGenerateVideo = async () => {
+        if (!prompt) {
+            addNotification({ message: 'Kérjük, adjon meg egy leírást a videó generálásához.', type: 'error' });
+            return;
+        }
+        if (!hasVeoApiKey) {
+            addNotification({ message: 'Kérjük, válassza ki az API kulcsot a videógeneráláshoz.', type: 'error' });
+            return;
+        }
+
+        setIsGenerating(true);
+        setLoadingMessage('Videó generálása (ez eltarthat néhány percig)...');
+        setGeneratedVideoUrl(null);
+
+        let operation = null;
+        try {
+            // Re-initialize AI right before making the call to ensure it uses the most up-to-date API key
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            operation = await ai.models.generateVideos({
+                model: 'veo-3.1-fast-generate-preview',
+                prompt: prompt,
+                config: {
+                    numberOfVideos: 1,
+                    resolution: videoResolution,
+                    aspectRatio: videoAspectRatio
+                }
+            });
+
+            while (!operation.done) {
+                setLoadingMessage('Videó generálása (még dolgozunk rajta)...');
+                await new Promise(resolve => setTimeout(resolve, 10000)); // Poll every 10 seconds
+                operation = await ai.operations.getVideosOperation({ operation: operation });
+            }
+
+            if (operation.response?.generatedVideos?.[0]?.video?.uri) {
+                const downloadLink = operation.response.generatedVideos[0].video.uri;
+                // The response.body contains the MP4 bytes. You must append an API key when fetching from the download link.
+                const videoUrl = `${downloadLink}&key=${API_KEY}`;
+                setGeneratedVideoUrl(videoUrl);
+                addNotification({ message: 'Videó sikeresen generálva!', type: 'success' });
+                addDoc({ id: generateId(), type: 'link', title: `Generált Videó: ${prompt.substring(0, 30)}`, content: videoUrl, createdAt: new Date().toISOString() });
+            } else {
+                addNotification({ message: 'A videó generálása sikertelen: Nincs videó a válaszban.', type: 'error' });
+            }
+        } catch (error: any) {
+            console.error("Error generating video:", error);
+            if (error.message && error.message.includes("Requested entity was not found.")) {
+                 addNotification({ message: 'Hiba a videógenerálás során. Kérjük, válassza ki újra az API kulcsot.', type: 'error' });
+                 setHasVeoApiKey(false); // Reset key status
+            } else {
+                addNotification({ message: `Hiba a videó generálása során: ${error.message || 'Ismeretlen hiba'}`, type: 'error' });
+            }
+        } finally {
+            setIsGenerating(false);
+            setLoadingMessage('');
+        }
+    };
+
+    const handleEditImage = async () => {
+        if (!imageFile || !prompt) {
+            addNotification({ message: 'Kérjük, töltsön fel egy képet és adjon meg egy szerkesztési leírást.', type: 'error' });
+            return;
+        }
+        setIsGenerating(true);
+        setLoadingMessage('Kép szerkesztése...');
+        setEditedImageUrl(null);
+
+        try {
+            const base64ImageData = await fileToBase64(imageFile);
+            // Re-initialize AI here to ensure it uses the latest API_KEY if updated by user
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: {
+                    parts: [
+                        { inlineData: { data: base64ImageData, mimeType: imageFile.type } },
+                        { text: prompt },
+                    ],
+                },
+                config: { responseModalities: [Modality.IMAGE] },
+            });
+
+            if (response.candidates?.[0]?.content?.parts) {
+                for (const part of response.candidates[0].content.parts) {
+                    if (part.inlineData) {
+                        const base64ImageBytes: string = part.inlineData.data;
+                        const imageUrl = `data:${part.inlineData.mimeType};base64,${base64ImageBytes}`;
+                        setEditedImageUrl(imageUrl);
+                        addNotification({ message: 'Kép sikeresen szerkesztve!', type: 'success' });
+                        addDoc({ id: generateId(), type: 'image', title: `Szerkesztett Kép: ${prompt.substring(0, 30)}`, content: imageUrl, createdAt: new Date().toISOString() });
+                        break;
+                    }
+                }
+            } else {
+                addNotification({ message: 'A kép szerkesztése sikertelen: Nincs kép a válaszban.', type: 'error' });
+            }
+        } catch (error: any) {
+            console.error("Error editing image:", error);
+            addNotification({ message: `Hiba a kép szerkesztése során: ${error.message || 'Ismeretlen hiba'}`, type: 'error' });
+        } finally {
+            setIsGenerating(false);
+            setLoadingMessage('');
+        }
+    };
+
+    const handleEditVideo = async () => {
+        if (!videoFile || !prompt) {
+            addNotification({ message: 'Kérjük, töltsön fel egy videót és adjon meg egy szerkesztési leírást az extendáláshoz.', type: 'error' });
+            return;
+        }
+        if (!hasVeoApiKey) {
+            addNotification({ message: 'Kérjük, válassza ki az API kulcsot a videószerkesztéshez.', type: 'error' });
+            return;
+        }
+
+        setIsGenerating(true);
+        setLoadingMessage('Videó extendálása (ez eltarthat néhány percig)...');
+        setEditedVideoUrl(null);
+
+        let operation = null;
+        try {
+            const base64VideoData = await fileToBase64(videoFile);
+            // Re-initialize AI right before making the call to ensure it uses the most up-to-date API key
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            operation = await ai.models.generateVideos({
+                model: 'veo-3.1-generate-preview', // Use the generate-preview model for more advanced features like video extension
+                prompt: prompt,
+                video: {
+                    videoBytes: base64VideoData,
+                    mimeType: videoFile.type
+                },
+                config: {
+                    numberOfVideos: 1,
+                    resolution: '720p', // Assume 720p for extension for simplicity, as only 720p videos can be extended
+                    aspectRatio: '16:9' // Aspect ratio must be the same as the previous video. For upload, we assume 16:9.
+                }
+            });
+
+            while (!operation.done) {
+                setLoadingMessage('Videó extendálása (még dolgozunk rajta)...');
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                operation = await ai.operations.getVideosOperation({ operation: operation });
+            }
+
+            if (operation.response?.generatedVideos?.[0]?.video?.uri) {
+                const downloadLink = operation.response.generatedVideos[0].video.uri;
+                const videoUrl = `${downloadLink}&key=${API_KEY}`;
+                setEditedVideoUrl(videoUrl);
+                addNotification({ message: 'Videó sikeresen extendálva!', type: 'success' });
+                addDoc({ id: generateId(), type: 'link', title: `Szerkesztett Videó: ${prompt.substring(0, 30)}`, content: videoUrl, createdAt: new Date().toISOString() });
+            } else {
+                addNotification({ message: 'A videó extendálása sikertelen: Nincs videó a válaszban.', type: 'error' });
+            }
+        } catch (error: any) {
+            console.error("Error extending video:", error);
+            if (error.message && error.message.includes("Requested entity was not found.")) {
+                 addNotification({ message: 'Hiba a videóextendálás során. Kérjük, válassza ki újra az API kulcsot.', type: 'error' });
+                 setHasVeoApiKey(false); // Reset key status
+            } else {
+                addNotification({ message: `Hiba a videó extendálása során: ${error.message || 'Ismeretlen hiba'}`, type: 'error' });
+            }
+        } finally {
+            setIsGenerating(false);
+            setLoadingMessage('');
+        }
+    };
+
+
+    const renderContent = () => {
+        switch (activeTool) {
+            case 'generate_image':
+                return (
+                    <>
+                        <div className="form-group">
+                            <label htmlFor="imagePrompt">Kép leírása:</label>
+                            <textarea id="imagePrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a generálni kívánt képet..." rows={3}></textarea>
+                        </div>
+                        <button className="btn btn-primary" onClick={handleGenerateImage} disabled={isGenerating}>
+                            <Icon name={isGenerating ? 'progress_activity' : 'auto_awesome'} />
+                            {isGenerating ? loadingMessage : 'Kép Generálása'}
+                        </button>
+                        {generatedImageUrl && (
+                            <div className="generated-content-output">
+                                <h4>Generált Kép:</h4>
+                                <img src={generatedImageUrl} alt="Generated" className="generated-media" />
+                            </div>
+                        )}
+                    </>
+                );
+            case 'generate_video':
+                return (
+                    <>
+                        {!hasVeoApiKey && (
+                            <div className="api-key-warning">
+                                <p>A videógenerálás prémium szolgáltatás, ami saját API kulcsot igényel. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer">További információ a számlázásról.</a></p>
+                                <button className="btn btn-warning" onClick={handleSelectVeoApiKey}>
+                                    <Icon name="key" /> API Kulcs Kiválasztása
+                                </button>
+                            </div>
+                        )}
+                        <div className="form-group">
+                            <label htmlFor="videoPrompt">Videó leírása:</label>
+                            <textarea id="videoPrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a generálni kívánt videót..." rows={3}></textarea>
+                        </div>
+                        <div className="form-group">
+                            <label>Képarány:</label>
+                            <div className="option-buttons">
+                                <button className={`btn btn-secondary ${videoAspectRatio === '16:9' ? 'active' : ''}`} onClick={() => setVideoAspectRatio('16:9')}>16:9</button>
+                                <button className={`btn btn-secondary ${videoAspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setVideoAspectRatio('9:16')}>9:16</button>
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label>Felbontás:</label>
+                            <div className="option-buttons">
+                                <button className={`btn btn-secondary ${videoResolution === '720p' ? 'active' : ''}`} onClick={() => setVideoResolution('720p')}>720p</button>
+                                <button className={`btn btn-secondary ${videoResolution === '1080p' ? 'active' : ''}`} onClick={() => setVideoResolution('1080p')}>1080p</button>
+                            </div>
+                        </div>
+                        <button className="btn btn-primary" onClick={handleGenerateVideo} disabled={isGenerating || !hasVeoApiKey}>
+                            <Icon name={isGenerating ? 'progress_activity' : 'movie_creation'} />
+                            {isGenerating ? loadingMessage : 'Videó Generálása'}
+                        </button>
+                        {generatedVideoUrl && (
+                            <div className="generated-content-output">
+                                <h4>Generált Videó:</h4>
+                                <video src={generatedVideoUrl} controls className="generated-media"></video>
+                                <a href={generatedVideoUrl} download="generated-video.mp4" className="btn btn-secondary download-link">Letöltés</a>
+                            </div>
+                        )}
+                    </>
+                );
+            case 'edit_image':
+                return (
+                    <>
+                        <div className="form-group">
+                            <label htmlFor="imageUpload">Kép feltöltése:</label>
+                            <input type="file" id="imageUpload" accept="image/*" onChange={e => setImageFile(e.target.files?.[0] || null)} />
+                            {imageFile && <p>Feltöltött fájl: {imageFile.name}</p>}
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="editImagePrompt">Szerkesztési leírás:</label>
+                            <textarea id="editImagePrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a szerkesztést (pl. 'Adj hozzá egy kalapot')..." rows={3}></textarea>
+                        </div>
+                        <button className="btn btn-primary" onClick={handleEditImage} disabled={isGenerating || !imageFile}>
+                            <Icon name={isGenerating ? 'progress_activity' : 'edit'} />
+                            {isGenerating ? loadingMessage : 'Kép Szerkesztése'}
+                        </button>
+                        {editedImageUrl && (
+                            <div className="generated-content-output">
+                                <h4>Szerkesztett Kép:</h4>
+                                <img src={editedImageUrl} alt="Edited" className="generated-media" />
+                            </div>
+                        )}
+                    </>
+                );
+            case 'edit_video':
+                return (
+                    <>
+                        {!hasVeoApiKey && (
+                            <div className="api-key-warning">
+                                <p>A videószerkesztés prémium szolgáltatás, ami saját API kulcsot igényel. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer">További információ a számlázásról.</a></p>
+                                <button className="btn btn-warning" onClick={handleSelectVeoApiKey}>
+                                    <Icon name="key" /> API Kulcs Kiválasztása
+                                </button>
+                            </div>
+                        )}
+                        <div className="form-group">
+                            <label htmlFor="videoUpload">Videó feltöltése:</label>
+                            <input type="file" id="videoUpload" accept="video/mp4,video/quicktime" onChange={e => setVideoFile(e.target.files?.[0] || null)} />
+                            {videoFile && <p>Feltöltött fájl: {videoFile.name}</p>}
+                        </div>
+                        <div className="form-group">
+                            <label htmlFor="editVideoPrompt">Extendálási leírás:</label>
+                            <textarea id="editVideoPrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le, mit szeretne hozzáadni a videó végéhez (pl. 'adj hozzá 7 másodpercet egy kutyáról, ami fut')..." rows={3}></textarea>
+                        </div>
+                        <button className="btn btn-primary" onClick={handleEditVideo} disabled={isGenerating || !videoFile || !hasVeoApiKey}>
+                            <Icon name={isGenerating ? 'progress_activity' : 'movie_edit'} />
+                            {isGenerating ? loadingMessage : 'Videó Extendálása'}
+                        </button>
+                        {editedVideoUrl && (
+                            <div className="generated-content-output">
+                                <h4>Extendált Videó:</h4>
+                                <video src={editedVideoUrl} controls className="generated-media"></video>
+                                <a href={editedVideoUrl} download="edited-video.mp4" className="btn btn-secondary download-link">Letöltés</a>
+                            </div>
+                        )}
+                    </>
+                );
+            default: return null;
+        }
+    };
+
+    return (
+        <div className="view-fade-in creative-tools-view">
+            <Card fullHeight header={<h2>Kreatív Eszközök</h2>}>
+                <div className="creative-tools-nav">
+                    <button className={`btn btn-segment ${activeTool === 'generate_image' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_image'); setPrompt(''); setGeneratedImageUrl(null); setIsGenerating(false); }}>
+                        <Icon name="image" /> Kép Generálása
+                    </button>
+                    <button className={`btn btn-segment ${activeTool === 'generate_video' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_video'); setPrompt(''); setGeneratedVideoUrl(null); setIsGenerating(false); }}>
+                        <Icon name="movie" /> Videó Generálása
+                    </button>
+                     <button className={`btn btn-segment ${activeTool === 'edit_image' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_image'); setPrompt(''); setImageFile(null); setEditedImageUrl(null); setIsGenerating(false); }}>
+                        <Icon name="edit" /> Kép Szerkesztése
+                    </button>
+                    <button className={`btn btn-segment ${activeTool === 'edit_video' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_video'); setPrompt(''); setVideoFile(null); setEditedVideoUrl(null); setIsGenerating(false); }}>
+                        <Icon name="movie_filter" /> Videó Szerkesztése
+                    </button>
+                </div>
+                <div className="creative-tools-content">
+                    {isGenerating && <div className="loading-overlay"><div className="spinner"></div><p>{loadingMessage}</p></div>}
+                    {renderContent()}
+                </div>
+            </Card>
+        </div>
+    );
+};
+
 
 // FIX: Change to React.FC to fix `key` prop type error.
 const MindMapNodeComponent: React.FC<{ node: MindMapNode; onUpdatePosition: (id: string, rect: any) => void; }> = ({ node, onUpdatePosition }) => {
@@ -1480,6 +1889,10 @@ const MindMapView = ({ data }) => {
         setIsPanning(false);
     };
 
+    const handleMouseLeave = () => { // Added for better UX
+        setIsPanning(false);
+    };
+
     const handleWheel = (e) => {
         e.preventDefault();
         const newScale = Math.min(Math.max(0.2, scale - e.deltaY * 0.001), 2);
@@ -1517,7 +1930,7 @@ const MindMapView = ({ data }) => {
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
+                    onMouseLeave={handleMouseLeave} // Use the new handler
                     onWheel={handleWheel}
                 >
                     <div 
@@ -1535,7 +1948,8 @@ const MindMapView = ({ data }) => {
                                 key={`${conn.from}-${conn.to}`}
                                 from={nodePositions[conn.from]}
                                 to={nodePositions[conn.to]}
-                                containerRect={{x: pan.x, y: pan.y, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0, toJSON: () => ({})}}
+                                // FIX: Provide a valid Rect-like object for containerRect
+                                containerRect={{x: containerRef.current.getBoundingClientRect().x, y: containerRef.current.getBoundingClientRect().y, width: 0, height: 0}}
                              />
                         ))}
                     </svg>
@@ -1584,58 +1998,40 @@ const App = () => {
             case 'docs': return <DocsView docs={data.docs} addDoc={data.addDoc} />;
             case 'gemini_chat': return <GeminiChatView />;
             case 'mind_map': return <MindMapView data={data.mindMap} />;
-            case 'creative_tools': return <CreativeToolsView />;
+            case 'creative_tools': return <CreativeToolsView addDoc={data.addDoc} addNotification={addNotification} />;
             case 'meeting_assistant': return <MeetingAssistantView />;
-            default: return <DashboardView tasks={data.tasks} emails={data.emails}/>;
-        }
-    };
-    
-    const toggleMenu = () => {
-        if (isMobile) {
-            setMobileMenuOpen(!isMobileMenuOpen);
-        } else {
-            setSidebarCollapsed(!isSidebarCollapsed);
+            default: return <DashboardView tasks={data.tasks} emails={data.emails} />;
         }
     };
 
     return (
-        <div className="app-layout">
-            <div className="notification-container">
-                {notifications.map(n => (
-                    <NotificationComponent key={n.id} notification={n} onDismiss={dismissNotification} />
-                ))}
-            </div>
-            <div className="aurora-background">
-                <div className="aurora-shape aurora-shape1"></div>
-                <div className="aurora-shape aurora-shape2"></div>
-                <div className="aurora-shape aurora-shape3"></div>
-            </div>
+        <div className={`app-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${isMobileMenuOpen ? 'mobile-menu-open' : ''}`}>
             <Sidebar 
                 currentView={currentView} 
                 setView={setCurrentView} 
-                isCollapsed={isSidebarCollapsed && !isMobile} 
+                isCollapsed={isSidebarCollapsed} 
                 setCollapsed={setSidebarCollapsed}
                 isMobile={isMobile}
                 isMobileMenuOpen={isMobileMenuOpen}
                 setMobileMenuOpen={setMobileMenuOpen}
             />
-            <div className="page-container" style={{paddingLeft: (isSidebarCollapsed && !isMobile) ? 'var(--sidebar-width-collapsed)' : (isMobile ? '0' : 'var(--sidebar-width)')}}>
-                 {/* FIX: Corrected typo from currentViesw to currentView */}
-                 <GlobalHeader currentView={currentView} onMenuClick={toggleMenu} />
-                <main className="main-content">
+            <div className="main-content">
+                <GlobalHeader currentView={currentView} onMenuClick={() => setMobileMenuOpen(true)} />
+                <main className="view-content">
                     {renderView()}
                 </main>
             </div>
-            {isMobile && (
-                <div 
-                    className={`mobile-menu-overlay ${isMobileMenuOpen ? 'open' : ''}`} 
-                    onClick={() => setMobileMenuOpen(false)}
-                    aria-hidden={!isMobileMenuOpen}
-                ></div>
-            )}
+            <div className="notification-container">
+                {notifications.map(n => (
+                    <NotificationComponent key={n.id} notification={n} onDismiss={dismissNotification} />
+                ))}
+            </div>
         </div>
     );
 };
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
+ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+        <App />
+    </React.StrictMode>
+);
