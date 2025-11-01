@@ -1,12 +1,9 @@
-
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
-// FIX: Import createPortal from 'react-dom' as it is not available in 'react-dom/client'.
 import { createPortal } from 'react-dom';
 import { GoogleGenAI, Chat, GenerateContentResponse, Content, Part, Type, FunctionDeclaration, Tool, SendMessageParameters, Modality } from "@google/genai";
 import Editor from '@monaco-editor/react';
@@ -15,17 +12,14 @@ import remarkGfm from 'remark-gfm';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
-// FIX: Define the AIStudio interface to resolve type conflict for window.aistudio.
-interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-}
-
 declare global {
+    interface AIStudio {
+        hasSelectedApiKey: () => Promise<boolean>;
+        openSelectKey: () => Promise<void>;
+    }
     interface Window {
         SpeechRecognition: any;
         webkitSpeechRecognition: any;
-        // FIX: Use the newly defined AIStudio interface for the 'aistudio' property.
         aistudio: AIStudio;
     }
 }
@@ -236,7 +230,7 @@ const mockDocs: DocItem[] = [
     { id: 'doc-2', type: 'link', title: 'Gemini API Dokumentáció', content: 'https://ai.google.dev/gemini-api/docs', createdAt: new Date('2024-07-29').toISOString() },
     { id: 'doc-3', type: 'image', title: 'Új Logó Terv', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0NSIgZmlsbD0iI2YxYzQwZiIvPjxwYXRoIGQ9Ik01MCwyMEw3NSw3MEwyNSw3MFoiIGZpbGw9IiNlNzRhM2MiLz48L3N2Zz4=', createdAt: new Date('2024-07-28').toISOString() },
     { id: 'doc-4', type: 'note', title: 'Projekt V7 Ötletek', content: 'Felhasználói authentikáció OAuth2-vel. Adatbázis séma optimalizálása. Valós idejű értesítések implementálása WebSocket segítségével.', createdAt: new Date('2024-07-25').toISOString() },
-    { id: 'doc-5', type: 'image', title: 'AI által generált kép', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhZmU5ZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM1M2I4YjQiLz48L2xpbmVhcjxncmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg==', createdAt: new Date('2024-08-01').toISOString() }
+    { id: 'doc-5', type: 'image', title: 'AI által generált kép', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhZmU5ZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY2NvbG9yPSIjNTNiOGI0Ii8+PC9saW5lYXJncmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg==', createdAt: new Date('2024-08-01').toISOString() }
 ];
 
 const mockProposals: Proposal[] = [
@@ -331,7 +325,7 @@ const fileToBase64 = (file: File): Promise<string> => {
         reader.readAsDataURL(file);
         reader.onload = () => {
             const result = reader.result as string;
-            // Remove the data:image/png;base64, prefix
+            // Remove the data:image/png;base64, or data:video/mp4;base64, prefix
             resolve(result.split(',')[1]);
         };
         reader.onerror = error => reject(error);
@@ -621,7 +615,7 @@ const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
         return { monthGrid, monthName, year };
     }, [currentDate]);
     
-    const weekDays = ['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat', 'Vasárnap'];
+    const weekDays = ['Hétfő', 'Kedd', 'Csütörtök', 'Péntek', 'Szombat', 'Vasárnap'];
 
     const getEventsForDay = (day: Date) => {
         const dateString = day.toISOString().split('T')[0];
@@ -812,7 +806,7 @@ const EmailView = ({ emails: initialEmails, addTask, addNotification }) => {
             console.error("Error generating task from email:", error);
             addNotification({ message: 'Hiba történt a feladat létrehozása során.', type: 'error' });
         } finally {
-            setIsProcessing(false);
+            setIsGenerating(false);
         }
     };
 
@@ -1747,7 +1741,7 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
                             <textarea id="editVideoPrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le, mit szeretne hozzáadni a videó végéhez (pl. 'adj hozzá 7 másodpercet egy kutyáról, ami fut')..." rows={3}></textarea>
                         </div>
                         <button className="btn btn-primary" onClick={handleEditVideo} disabled={isGenerating || !videoFile || !hasVeoApiKey}>
-                            <Icon name={isGenerating ? 'progress_activity' : 'movie_edit'} />
+                            <Icon name={isGenerating ? 'progress_activity' : 'movie_filter'} />
                             {isGenerating ? loadingMessage : 'Videó Extendálása'}
                         </button>
                         {editedVideoUrl && (
@@ -1767,16 +1761,16 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
         <div className="view-fade-in creative-tools-view">
             <Card fullHeight header={<h2>Kreatív Eszközök</h2>}>
                 <div className="creative-tools-nav">
-                    <button className={`btn btn-segment ${activeTool === 'generate_image' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_image'); setPrompt(''); setGeneratedImageUrl(null); setIsGenerating(false); }}>
+                    <button className={`btn btn-segment ${activeTool === 'generate_image' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_image'); setPrompt(''); setGeneratedImageUrl(null); setEditedImageUrl(null); setImageFile(null); setGeneratedVideoUrl(null); setEditedVideoUrl(null); setVideoFile(null); setIsGenerating(false); setLoadingMessage(''); }}>
                         <Icon name="image" /> Kép Generálása
                     </button>
-                    <button className={`btn btn-segment ${activeTool === 'generate_video' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_video'); setPrompt(''); setGeneratedVideoUrl(null); setIsGenerating(false); }}>
+                    <button className={`btn btn-segment ${activeTool === 'generate_video' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_video'); setPrompt(''); setGeneratedImageUrl(null); setEditedImageUrl(null); setImageFile(null); setGeneratedVideoUrl(null); setEditedVideoUrl(null); setVideoFile(null); setIsGenerating(false); setLoadingMessage(''); }}>
                         <Icon name="movie" /> Videó Generálása
                     </button>
-                     <button className={`btn btn-segment ${activeTool === 'edit_image' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_image'); setPrompt(''); setImageFile(null); setEditedImageUrl(null); setIsGenerating(false); }}>
+                     <button className={`btn btn-segment ${activeTool === 'edit_image' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_image'); setPrompt(''); setGeneratedImageUrl(null); setEditedImageUrl(null); setImageFile(null); setGeneratedVideoUrl(null); setEditedVideoUrl(null); setVideoFile(null); setIsGenerating(false); setLoadingMessage(''); }}>
                         <Icon name="edit" /> Kép Szerkesztése
                     </button>
-                    <button className={`btn btn-segment ${activeTool === 'edit_video' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_video'); setPrompt(''); setVideoFile(null); setEditedVideoUrl(null); setIsGenerating(false); }}>
+                    <button className={`btn btn-segment ${activeTool === 'edit_video' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_video'); setPrompt(''); setGeneratedImageUrl(null); setEditedImageUrl(null); setImageFile(null); setGeneratedVideoUrl(null); setEditedVideoUrl(null); setVideoFile(null); setIsGenerating(false); setLoadingMessage(''); }}>
                         <Icon name="movie_filter" /> Videó Szerkesztése
                     </button>
                 </div>
