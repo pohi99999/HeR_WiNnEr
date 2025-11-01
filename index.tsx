@@ -8,15 +8,15 @@ import remarkGfm from 'remark-gfm';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
-// Consolidated `declare global` blocks to resolve TypeScript error.
-// Fix: Inline the AIStudio interface definition directly into Window to avoid potential conflicts
-// with external or implicit declarations of AIStudio or window.aistudio.
+// Define the AIStudio interface explicitly to resolve TypeScript error regarding type conflicts.
+interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+}
+
 declare global {
     interface Window {
-        aistudio: {
-            hasSelectedApiKey: () => Promise<boolean>;
-            openSelectKey: () => Promise<void>;
-        };
+        aistudio: AIStudio;
     }
 }
 
@@ -393,7 +393,6 @@ const useMediaQuery = (query: string) => {
     return matches;
 };
 
-// Fix: Add className prop to Icon component definition
 const Icon = ({ name, filled, className }: { name: string, filled?: boolean, className?: string }) => <span className={`material-symbols-outlined ${filled ? 'filled' : ''} ${className || ''}`}>{name}</span>;
 
 
@@ -416,7 +415,7 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose:
             <div className="modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
                     <h3>{title}</h3>
-                    <button onClick={onClose} className="btn btn-icon btn-secondary"><Icon name="close" /></button>
+                    <button onClick={onClose} className="btn btn-icon btn-secondary close-modal-btn"><Icon name="close" /></button>
                 </div>
                 <div className="modal-body">
                     {children}
@@ -461,7 +460,7 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
         <li>
             <a href="#" className={`nav-link ${currentView === item.id ? 'active' : ''}`} onClick={() => handleNavClick(item.id)}>
                 <Icon name={item.icon} />
-                <span>{item.label}</span>
+                <span className="nav-link-label">{item.label}</span>
             </a>
         </li>
     );
@@ -472,8 +471,8 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
             <li>
                 <button className={`nav-link nav-section-header ${isOpen ? 'open' : ''}`} onClick={() => setOpenSections(s => ({...s, [item.id]: !s[item.id]}))}>
                     <Icon name={item.icon} />
-                    <span>{item.label}</span>
-                    <Icon name="chevron_right" />
+                    <span className="nav-link-label">{item.label}</span>
+                    <Icon name="chevron_right" className="nav-section-indicator" />
                 </button>
                 <div className={`nav-sub-list-wrapper ${isOpen ? 'open' : ''}`}>
                     <ul className="nav-sub-list">
@@ -488,9 +487,9 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
         <aside className={`sidebar ${isCollapsed ? 'sidebar-collapsed' : ''} ${isMobile && isMobileMenuOpen ? 'mobile-open' : ''}`}>
             <div className="sidebar-inner">
                 <header className="sidebar-header">
-                    {(!isCollapsed || isMobile) && <h2>P-Day Light</h2>}
+                    {(!isCollapsed || isMobile) && <h2 className="app-title">P-Day Light</h2>}
                      {!isMobile && (
-                        <button className="collapse-toggle" onClick={() => setCollapsed(!isCollapsed)}>
+                        <button className="collapse-toggle" onClick={() => setCollapsed(!isCollapsed)} aria-label={isCollapsed ? "Sidebar kibontása" : "Sidebar összecsukása"}>
                             <Icon name={isCollapsed ? 'menu_open' : 'menu'} />
                         </button>
                      )}
@@ -511,15 +510,15 @@ const GlobalHeader = ({ currentView, onMenuClick }) => {
     return (
         <header className="global-header">
              {isMobile && (
-                <button className="mobile-menu-toggle" onClick={onMenuClick}>
+                <button className="mobile-menu-toggle" onClick={onMenuClick} aria-label="Mobil menü megnyitása">
                     <Icon name="menu" />
                 </button>
             )}
-            <h3>{currentNavItem?.label || 'Irányítópult'}</h3>
+            <h3 className="view-title">{currentNavItem?.label || 'Irányítópult'}</h3>
             <div className="global-header-actions">
                 <button className="user-profile-button">
                     <div className="avatar-sm">F</div>
-                    <span>Felhasználó</span>
+                    <span className="user-name">Felhasználó</span>
                 </button>
             </div>
         </header>
@@ -601,19 +600,19 @@ const DashboardView = ({ tasks, emails, addNotification }: { tasks: TaskItem[], 
         <div className="dashboard-grid">
             <Card fullHeight className="weekly-summary-card stagger-item" header={
                 <div className="card-header-ai">
-                    <h4>Heti Feladat Összefoglaló</h4>
+                    <h4 className="card-title">Heti Feladat Összefoglaló</h4>
                     <span className="ai-badge">AI</span>
                 </div>
             }>
                 {isGeneratingSummary ? (
                     <div className="loading-state">
                         <div className="spinner"></div>
-                        <p>Heti összefoglaló generálása... Ez eltarthat egy percig.</p>
+                        <p className="loading-message">Heti összefoglaló generálása... Ez eltarthat egy percig.</p>
                     </div>
                 ) : weeklySummary ? (
                     <>
                         <div className="summary-content-scrollable">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{weeklySummary}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} className="react-markdown-content">{weeklySummary}</ReactMarkdown>
                         </div>
                         <button className="btn btn-secondary btn-small refresh-summary-btn" onClick={handleGenerateWeeklySummary} aria-label="Összefoglaló frissítése">
                             <Icon name="refresh" />
@@ -623,25 +622,25 @@ const DashboardView = ({ tasks, emails, addNotification }: { tasks: TaskItem[], 
                 ) : (
                     <div className="empty-state">
                         <Icon name="auto_awesome" className="empty-state-icon" />
-                        <p>Kattintson az alábbi gombra a heti feladat-összefoglaló elkészítéséhez és a fókuszterületek javaslatához.</p>
-                        <button className="btn btn-primary" onClick={handleGenerateWeeklySummary} aria-label="Heti összefoglaló generálása">
+                        <p className="empty-state-message">Kattintson az alábbi gombra a heti feladat-összefoglaló elkészítéséhez és a fókuszterületek javaslatához.</p>
+                        <button className="btn btn-primary generate-summary-btn" onClick={handleGenerateWeeklySummary} aria-label="Heti összefoglaló generálása">
                             <Icon name="auto_awesome" />
                             <span>Összefoglaló Generálása</span>
                         </button>
                     </div>
                 )}
             </Card>
-            <Card className="stagger-item" style={{animationDelay: '100ms'}} header={<h4>Hamarosan lejáró feladatok</h4>}>
+            <Card className="stagger-item" style={{animationDelay: '100ms'}} header={<h4 className="card-title">Hamarosan lejáró feladatok</h4>}>
                 <ul className="quick-list">
                     {tasks.filter(t => t.dueDate && t.status !== 'Kész').sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 5).map(task => (
                         <li key={task.id}>
-                            <span>{task.title}</span>
+                            <span className="task-list-title">{task.title}</span>
                             <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
                         </li>
                     ))}
                 </ul>
             </Card>
-            <Card className="stagger-item" style={{animationDelay: '200ms'}} header={<h4>Legutóbbi Emailek</h4>}>
+            <Card className="stagger-item" style={{animationDelay: '200ms'}} header={<h4 className="card-title">Legutóbbi Emailek</h4>}>
                  <ul className="quick-list email-list">
                     {emails.slice(0, 5).map(email => (
                         <li key={email.id}>
@@ -719,14 +718,14 @@ const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
     };
 
     return (
-        <div className="view-fade-in">
+        <div className="view-fade-in planner-view">
             <Card header={
                 <div className="view-header" style={{marginBottom: 0, flexWrap: 'nowrap'}}>
-                    <h2>Tervező</h2>
+                    <h2 className="view-title">Tervező</h2>
                     <div className="calendar-controls">
-                        <button className="btn btn-secondary btn-icon" onClick={() => changeMonth(-1)} aria-label="Previous month"><Icon name="chevron_left" /></button>
+                        <button className="btn btn-icon btn-secondary" onClick={() => changeMonth(-1)} aria-label="Previous month"><Icon name="chevron_left" /></button>
                          <h3 className="calendar-current-date">{`${year} ${monthName}`}</h3>
-                        <button className="btn btn-secondary btn-icon" onClick={() => changeMonth(1)} aria-label="Next month"><Icon name="chevron_right" /></button>
+                        <button className="btn btn-icon btn-secondary" onClick={() => changeMonth(1)} aria-label="Next month"><Icon name="chevron_right" /></button>
                         <button className="btn btn-secondary" onClick={goToToday}>Ma</button>
                     </div>
                 </div>
@@ -821,7 +820,7 @@ const TasksView = ({ tasks, updateTaskStatus }: { tasks: TaskItem[], updateTaskS
         <DndProvider backend={HTML5Backend}>
             <div className="view-fade-in kanban-board-container">
                 <div className="view-header">
-                    <h2>Feladatok</h2>
+                    <h2 className="view-title">Feladatok</h2>
                      <button className="btn btn-primary"><Icon name="add"/><span>Új Feladat</span></button>
                 </div>
                 <div className="kanban-board">
@@ -922,23 +921,23 @@ const EmailView = ({ emails: initialEmails, addTask, addNotification }) => {
     const visibleEmails = emails.filter(e => e.category === activeCategory);
 
     return (
-        <div className="view-fade-in">
+        <div className="view-fade-in email-view">
             <Card fullHeight className="email-view-card">
                  <div className="email-view-layout">
                     <div className="email-sidebar">
                         <div className="email-actions">
-                            <button className="btn btn-primary" style={{width: '100%'}}>Új Email</button>
+                            <button className="btn btn-primary new-email-btn">Új Email</button>
                         </div>
                         <ul className="email-folders">
                             <li className={activeCategory === 'inbox' ? 'active' : ''} onClick={() => setActiveCategory('inbox')}>
-                                <Icon name="inbox" /> Beérkezett
+                                <Icon name="inbox" /> <span className="folder-name">Beérkezett</span>
                             </li>
                              <li className={activeCategory === 'sent' ? 'active' : ''} onClick={() => setActiveCategory('sent')}>
-                                <Icon name="send" /> Elküldött
+                                <Icon name="send" /> <span className="folder-name">Elküldött</span>
                             </li>
                         </ul>
                     </div>
-                    <div className="email-list-panel">
+                    <div className="email-list-panel custom-scrollbar">
                         {visibleEmails.map(email => (
                             <div key={email.id} className={`email-list-item ${selectedEmailId === email.id ? 'selected' : ''} ${!email.read ? 'unread' : ''}`} onClick={() => handleSelectEmail(email.id)}>
                                 <div className="email-list-item-header">
@@ -949,25 +948,25 @@ const EmailView = ({ emails: initialEmails, addTask, addNotification }) => {
                             </div>
                         ))}
                     </div>
-                    <div className="email-content-panel">
+                    <div className="email-content-panel custom-scrollbar">
                         {selectedEmail ? (
                              <>
                                 <div className="email-content-header">
-                                    <h3>{selectedEmail.subject}</h3>
+                                    <h3 className="email-content-subject">{selectedEmail.subject}</h3>
                                     <div className="email-content-actions">
-                                        <button className="btn btn-secondary btn-icon-text" onClick={handleCreateTaskFromEmail} disabled={isProcessing}>
+                                        <button className="btn btn-secondary btn-icon-text create-task-btn" onClick={handleCreateTaskFromEmail} disabled={isProcessing}>
                                             <Icon name={isProcessing ? 'progress_activity' : 'auto_awesome'} />
                                             {isProcessing ? 'Feldolgozás...' : 'Feladat Létrehozása'}
                                         </button>
-                                        <button className="btn btn-icon btn-secondary" onClick={() => toggleImportance(selectedEmail.id)}>
+                                        <button className="btn btn-icon btn-secondary toggle-importance-btn" onClick={() => toggleImportance(selectedEmail.id)}>
                                             <Icon name="star" filled={selectedEmail.important} />
                                         </button>
                                     </div>
                                 </div>
                                 <div className="email-content-meta">
-                                    <p><strong>Feladó:</strong> {selectedEmail.sender}</p>
-                                    <p><strong>Címzett:</strong> {selectedEmail.recipient}</p>
-                                    <p><strong>Dátum:</strong> {new Date(selectedEmail.timestamp).toLocaleString()}</p>
+                                    <p><strong>Feladó:</strong> <span className="email-meta-value">{selectedEmail.sender}</span></p>
+                                    <p><strong>Címzett:</strong> <span className="email-meta-value">{selectedEmail.recipient}</span></p>
+                                    <p><strong>Dátum:</strong> <span className="email-meta-value">{new Date(selectedEmail.timestamp).toLocaleString()}</span></p>
                                 </div>
                                 <div className="email-content-body">
                                     {selectedEmail.body}
@@ -1048,8 +1047,8 @@ const ProjectCard: React.FC<{ project: Project, tasks: TaskItem[] }> = ({ projec
 
     return (
         <div ref={ref} className="project-card" style={{ opacity: isDragging ? 0.5 : 1 }}>
-            <h4>{project.title}</h4>
-            <p>{project.description}</p>
+            <h4 className="project-card-title">{project.title}</h4>
+            <p className="project-card-description">{project.description}</p>
             <div className="project-team">
                 {project.team.map((member, index) => (
                     <div key={index} className="avatar-sm" title={member}>{member.charAt(0)}</div>
@@ -1059,7 +1058,7 @@ const ProjectCard: React.FC<{ project: Project, tasks: TaskItem[] }> = ({ projec
                 <div className="progress-bar-container">
                     <div className="progress-bar" style={{ width: `${progress}%` }}></div>
                 </div>
-                <span>{Math.round(progress)}%</span>
+                <span className="progress-text">{Math.round(progress)}%</span>
             </div>
         </div>
     );
@@ -1077,10 +1076,10 @@ const ProjectKanbanColumn: React.FC<{ status: ProjectStatus, projects: Project[]
     return (
         <div ref={ref} className={`kanban-column ${isOver ? 'is-over' : ''}`}>
             <div className="kanban-column-header">
-                <h3>{status}</h3>
+                <h3 className="kanban-column-title">{status}</h3>
                 <span className="task-count">{projects.length}</span>
             </div>
-            <div className="kanban-column-body">
+            <div className="kanban-column-body custom-scrollbar">
                 {projects.map(p => <ProjectCard key={p.id} project={p} tasks={tasks} />)}
             </div>
         </div>
@@ -1098,7 +1097,7 @@ const ProjectsKanbanView = ({ projects, tasks, updateProjectStatus }: { projects
          <DndProvider backend={HTML5Backend}>
             <div className="view-fade-in kanban-board-container">
                  <div className="view-header">
-                    <h2>Projektek</h2>
+                    <h2 className="view-title">Projektek</h2>
                 </div>
                 <div className="kanban-board">
                     {statuses.map(status => (
@@ -1186,7 +1185,7 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
 
     return (
         <div className="view-fade-in project-overview-grid">
-            <Card header={<h4>Projektek Státusz Szerint</h4>} className="stagger-item">
+            <Card header={<h4 className="card-title">Projektek Státusz Szerint</h4>} className="stagger-item">
                 <div className="chart-card-content">
                     <DonutChart />
                     <ul className="chart-legend">
@@ -1200,7 +1199,7 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
                     </ul>
                 </div>
             </Card>
-            <Card header={<h4>Közelgő Határidők</h4>} className="stagger-item" style={{ animationDelay: '100ms' }}>
+            <Card header={<h4 className="card-title">Közelgő Határidők</h4>} className="stagger-item" style={{ animationDelay: '100ms' }}>
                 <ul className="quick-list">
                     {upcomingDeadlines.map(p => {
                          const daysLeft = Math.ceil((new Date(p.dueDate!).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
@@ -1208,7 +1207,7 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
                              <li key={p.id}>
                                 <div>
                                     <Icon name="event" />
-                                    <span>{p.title}</span>
+                                    <span className="list-item-text">{p.title}</span>
                                 </div>
                                 <span className="deadline-days">{p.dueDate} ({daysLeft} nap)</span>
                             </li>
@@ -1216,7 +1215,7 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
                     })}
                 </ul>
             </Card>
-             <Card header={<h4>Kiemelt Feladatok</h4>} className="stagger-item" style={{ gridColumn: '1 / -1', animationDelay: '200ms' }}>
+             <Card header={<h4 className="card-title">Kiemelt Feladatok</h4>} className="stagger-item" style={{ gridColumn: '1 / -1', animationDelay: '200ms' }}>
                  <ul className="quick-list">
                     {keyTasks.map(task => {
                         const project = getProjectById(task.projectId!); // Use non-null assertion as projectId is filtered
@@ -1269,9 +1268,9 @@ const ProposalCard: React.FC<{ proposal: Proposal }> = ({ proposal }) => (
 
 const ProposalsView = ({ proposals }: { proposals: Proposal[] }) => {
     return (
-        <div className="view-fade-in">
+        <div className="view-fade-in proposals-view">
             <div className="view-header">
-                <h2>Pályázatok</h2>
+                <h2 className="view-title">Pályázatok</h2>
                 <button className="btn btn-primary"><Icon name="add" /><span>Új Pályázat</span></button>
             </div>
             <div className="proposals-grid">
@@ -1292,9 +1291,9 @@ const TrainingsView = ({ trainings }: { trainings: TrainingItem[] }) => {
     };
 
     return (
-        <div className="view-fade-in">
+        <div className="view-fade-in trainings-view">
             <div className="view-header">
-                <h2>Képzések</h2>
+                <h2 className="view-title">Képzések</h2>
                 <button className="btn btn-primary"><Icon name="add" /><span>Új Képzés</span></button>
             </div>
             <div className="trainings-grid">
@@ -1335,18 +1334,18 @@ const ContactCard: React.FC<{ contact: Contact }> = ({ contact }) => {
                 {contact.email && (
                     <div className="contact-detail-item">
                         <Icon name="mail" />
-                        <a href={`mailto:${contact.email}`}>{contact.email}</a>
+                        <a href={`mailto:${contact.email}`} className="contact-link">{contact.email}</a>
                     </div>
                 )}
                 {contact.phone && (
                     <div className="contact-detail-item">
                         <Icon name="phone" />
-                        <span>{contact.phone}</span>
+                        <span className="contact-phone">{contact.phone}</span>
                     </div>
                 )}
                 {contact.notes && (
                      <div className="contact-notes">
-                        <p>{contact.notes}</p>
+                        <p className="contact-notes-text">{contact.notes}</p>
                     </div>
                 )}
             </div>
@@ -1369,9 +1368,9 @@ const ContactCard: React.FC<{ contact: Contact }> = ({ contact }) => {
 
 const ContactsView = ({ contacts }: { contacts: Contact[] }) => {
     return (
-        <div className="view-fade-in">
+        <div className="view-fade-in contacts-view">
             <div className="view-header">
-                <h2>Névjegyek</h2>
+                <h2 className="view-title">Névjegyek</h2>
                 <button className="btn btn-primary">
                     <Icon name="add" />
                     <span>Új Névjegy</span>
@@ -1395,18 +1394,18 @@ const FinancesView = ({ transactions, budgets }: { transactions: Transaction[], 
     return (
         <div className="view-fade-in finances-grid">
             <Card className="finance-summary-card stagger-item">
-                <h4>Bevétel</h4>
+                <h4 className="card-title">Bevétel</h4>
                 <p className="amount income">{income.toLocaleString('hu-HU')} Ft</p>
             </Card>
             <Card className="finance-summary-card stagger-item" style={{animationDelay: '100ms'}}>
-                <h4>Kiadás</h4>
+                <h4 className="card-title">Kiadás</h4>
                 <p className="amount expense">{Math.abs(expense).toLocaleString('hu-HU')} Ft</p>
             </Card>
             <Card className="finance-summary-card stagger-item" style={{animationDelay: '200ms'}}>
-                <h4>Egyenleg</h4>
+                <h4 className="card-title">Egyenleg</h4>
                 <p className="amount">{balance.toLocaleString('hu-HU')} Ft</p>
             </Card>
-            <Card className="stagger-item" style={{animationDelay: '300ms', gridColumn: '1 / -1'}} header={<h4>Költségvetés</h4>}>
+            <Card className="stagger-item" style={{animationDelay: '300ms', gridColumn: '1 / -1'}} header={<h4 className="card-title">Költségvetés</h4>}>
                 <div className="budget-list">
                     {budgets.map(b => {
                         const spent = Math.abs(thisMonthTransactions.filter(t => t.category === b.category).reduce((s, t) => s + t.amount, 0));
@@ -1414,8 +1413,8 @@ const FinancesView = ({ transactions, budgets }: { transactions: Transaction[], 
                         return (
                              <div key={b.id} className="budget-item">
                                 <div className="budget-info">
-                                    <span>{b.category}</span>
-                                    <span>{spent.toLocaleString()} / {b.amount.toLocaleString()} Ft</span>
+                                    <span className="budget-category">{b.category}</span>
+                                    <span className="budget-amounts">{spent.toLocaleString()} / {b.amount.toLocaleString()} Ft</span>
                                 </div>
                                  <div className="progress-bar-container">
                                     <div className="progress-bar" style={{width: `${Math.min(percent, 100)}%`}}></div>
@@ -1425,12 +1424,12 @@ const FinancesView = ({ transactions, budgets }: { transactions: Transaction[], 
                     })}
                 </div>
             </Card>
-             <Card className="stagger-item" style={{animationDelay: '400ms', gridColumn: '1 / -1'}} header={<h4>Legutóbbi Tranzakciók</h4>}>
+             <Card className="stagger-item" style={{animationDelay: '400ms', gridColumn: '1 / -1'}} header={<h4 className="card-title">Legutóbbi Tranzakciók</h4>}>
                 <ul className="transaction-list">
                     {transactions.slice(0, 5).map(t => (
                         <li key={t.id}>
-                            <Icon name={t.type === 'income' ? 'arrow_upward' : 'arrow_downward'} />
-                            <span>{t.title}</span>
+                            <Icon name={t.type === 'income' ? 'arrow_upward' : 'arrow_downward'} className={`transaction-icon ${t.type}`} />
+                            <span className="transaction-title">{t.title}</span>
                             <span className={`amount ${t.type}`}>{t.amount.toLocaleString()} Ft</span>
                         </li>
                     ))}
@@ -1462,7 +1461,7 @@ const DocsView = ({ docs: initialDocs, addDoc }: { docs: DocItem[], addDoc: (doc
     const DocCard: React.FC<{ doc: DocItem }> = ({ doc }) => {
         switch(doc.type) {
             case 'note': return <div className="doc-card note-card"><h4>{doc.title}</h4><p>{doc.content.substring(0, 100)}...</p></div>
-            case 'link': return <div className="doc-card link-card"><Icon name="link"/><h4>{doc.title}</h4><a href={doc.content} target="_blank">{doc.content}</a></div>
+            case 'link': return <div className="doc-card link-card"><Icon name="link"/><h4>{doc.title}</h4><a href={doc.content} target="_blank" rel="noopener noreferrer">{doc.content}</a></div>
             case 'image': return <div className="doc-card image-card"><h4>{doc.title}</h4><img src={doc.content} alt={doc.title}/></div>
             default: return null;
         }
@@ -1470,10 +1469,10 @@ const DocsView = ({ docs: initialDocs, addDoc }: { docs: DocItem[], addDoc: (doc
 
     return (
         <div className="view-fade-in docs-view-grid">
-            <Card header={<h4>Új jegyzet</h4>} className="add-doc-card">
+            <Card header={<h4 className="card-title">Új jegyzet</h4>} className="add-doc-card">
                 <form onSubmit={handleSubmit} className="add-doc-form">
-                    <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Jegyzet címe..." />
-                    <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Tartalom..."></textarea>
+                    <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Jegyzet címe..." className="form-input" />
+                    <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Tartalom..." rows={5} className="form-textarea"></textarea>
                     <button type="submit" className="btn btn-primary">Mentés</button>
                 </form>
             </Card>
@@ -1482,8 +1481,8 @@ const DocsView = ({ docs: initialDocs, addDoc }: { docs: DocItem[], addDoc: (doc
     );
 };
 
-const GeminiChatView = () => <Card>Gemini Chat helyőrző</Card>;
-const MeetingAssistantView = () => <Card>Meeting Asszisztens helyőrző</Card>;
+const GeminiChatView = () => <Card header={<h2 className="view-title">Gemini Chat</h2>}><p>Gemini Chat helyőrző</p></Card>;
+const MeetingAssistantView = () => <Card header={<h2 className="view-title">Meeting Asszisztens</h2>}><p>Meeting Asszisztens helyőrző</p></Card>;
 
 const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem) => void, addNotification: (notification: Omit<Notification, 'id'>) => void }) => {
     const [activeTool, setActiveTool] = useState<'generate_image' | 'generate_video' | 'edit_image' | 'edit_video'>('generate_image');
@@ -1517,6 +1516,18 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
             setHasVeoApiKey(true); // Assume success after opening dialog
             addNotification({ message: 'API kulcs kiválasztva. Ha hiba történik, próbálja meg újra kiválasztani.', type: 'info' });
         }
+    };
+
+    const resetToolStates = () => {
+        setPrompt('');
+        setGeneratedImageUrl(null);
+        setGeneratedVideoUrl(null);
+        setEditedImageUrl(null);
+        setEditedVideoUrl(null);
+        setImageFile(null);
+        setVideoFile(null);
+        setIsGenerating(false);
+        setLoadingMessage('');
     };
 
     const handleGenerateImage = async () => {
@@ -1728,15 +1739,15 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
                     <>
                         <div className="form-group">
                             <label htmlFor="imagePrompt">Kép leírása:</label>
-                            <textarea id="imagePrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a generálni kívánt képet..." rows={3}></textarea>
+                            <textarea id="imagePrompt" className="creative-prompt-textarea form-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a generálni kívánt képet..." rows={3}></textarea>
                         </div>
-                        <button className="btn btn-primary" onClick={handleGenerateImage} disabled={isGenerating}>
+                        <button className="btn btn-primary generate-image-btn" onClick={handleGenerateImage} disabled={isGenerating}>
                             <Icon name={isGenerating ? 'progress_activity' : 'auto_awesome'} />
                             {isGenerating ? loadingMessage : 'Kép Generálása'}
                         </button>
                         {generatedImageUrl && (
-                            <div className="generated-content-output">
-                                <h4>Generált Kép:</h4>
+                            <div className="generated-content-output image-output">
+                                <h4 className="output-title">Generált Kép:</h4>
                                 <img src={generatedImageUrl} alt="Generated" className="generated-media" />
                             </div>
                         )}
@@ -1747,15 +1758,15 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
                     <>
                         {!hasVeoApiKey && (
                             <div className="api-key-warning">
-                                <p>A videógenerálás prémium szolgáltatás, ami saját API kulcsot igényel. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer">További információ a számlázásról.</a></p>
-                                <button className="btn btn-warning" onClick={handleSelectVeoApiKey}>
+                                <p className="warning-message">A videógenerálás prémium szolgáltatás, ami saját API kulcsot igényel. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="warning-link">További információ a számlázásról.</a></p>
+                                <button className="btn btn-warning select-api-key-btn" onClick={handleSelectVeoApiKey}>
                                     <Icon name="key" /> API Kulcs Kiválasztása
                                 </button>
                             </div>
                         )}
                         <div className="form-group">
                             <label htmlFor="videoPrompt">Videó leírása:</label>
-                            <textarea id="videoPrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a generálni kívánt videót..." rows={3}></textarea>
+                            <textarea id="videoPrompt" className="creative-prompt-textarea form-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a generálni kívánt videót..." rows={3}></textarea>
                         </div>
                         <div className="form-group">
                             <label>Képarány:</label>
@@ -1771,13 +1782,13 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
                                 <button className={`btn btn-secondary ${videoResolution === '1080p' ? 'active' : ''}`} onClick={() => setVideoResolution('1080p')}>1080p</button>
                             </div>
                         </div>
-                        <button className="btn btn-primary" onClick={handleGenerateVideo} disabled={isGenerating || !hasVeoApiKey}>
+                        <button className="btn btn-primary generate-video-btn" onClick={handleGenerateVideo} disabled={isGenerating || !hasVeoApiKey}>
                             <Icon name={isGenerating ? 'progress_activity' : 'movie_creation'} />
                             {isGenerating ? loadingMessage : 'Videó Generálása'}
                         </button>
                         {generatedVideoUrl && (
-                            <div className="generated-content-output">
-                                <h4>Generált Videó:</h4>
+                            <div className="generated-content-output video-output">
+                                <h4 className="output-title">Generált Videó:</h4>
                                 <video src={generatedVideoUrl} controls className="generated-media"></video>
                                 <a href={generatedVideoUrl} download="generated-video.mp4" className="btn btn-secondary download-link">Letöltés</a>
                             </div>
@@ -1788,21 +1799,21 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
                 return (
                     <>
                         <div className="form-group">
-                            <label htmlFor="imageUpload">Kép feltöltése:</label>
-                            <input type="file" id="imageUpload" accept="image/*" onChange={e => setImageFile(e.target.files?.[0] || null)} />
-                            {imageFile && <p>Feltöltött fájl: {imageFile.name}</p>}
+                            <label htmlFor="imageUpload" className="file-upload-label">Kép feltöltése:</label>
+                            <input type="file" id="imageUpload" accept="image/*" onChange={e => setImageFile(e.target.files?.[0] || null)} className="form-input-file" />
+                            {imageFile && <p className="file-name">Feltöltött fájl: {imageFile.name}</p>}
                         </div>
                         <div className="form-group">
                             <label htmlFor="editImagePrompt">Szerkesztési leírás:</label>
-                            <textarea id="editImagePrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a szerkesztést (pl. 'Adj hozzá egy kalapot')..." rows={3}></textarea>
+                            <textarea id="editImagePrompt" className="creative-prompt-textarea form-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le a szerkesztést (pl. 'Adj hozzá egy kalapot')..." rows={3}></textarea>
                         </div>
-                        <button className="btn btn-primary" onClick={handleEditImage} disabled={isGenerating || !imageFile}>
+                        <button className="btn btn-primary edit-image-btn" onClick={handleEditImage} disabled={isGenerating || !imageFile}>
                             <Icon name={isGenerating ? 'progress_activity' : 'edit'} />
                             {isGenerating ? loadingMessage : 'Kép Szerkesztése'}
                         </button>
                         {editedImageUrl && (
-                            <div className="generated-content-output">
-                                <h4>Szerkesztett Kép:</h4>
+                            <div className="generated-content-output image-output">
+                                <h4 className="output-title">Szerkesztett Kép:</h4>
                                 <img src={editedImageUrl} alt="Edited" className="generated-media" />
                             </div>
                         )}
@@ -1813,28 +1824,28 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
                     <>
                         {!hasVeoApiKey && (
                             <div className="api-key-warning">
-                                <p>A videószerkesztés prémium szolgáltatás, ami saját API kulcsot igényel. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer">További információ a számlázásról.</a></p>
-                                <button className="btn btn-warning" onClick={handleSelectVeoApiKey}>
+                                <p className="warning-message">A videószerkesztés prémium szolgáltatás, ami saját API kulcsot igényel. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="warning-link">További információ a számlázásról.</a></p>
+                                <button className="btn btn-warning select-api-key-btn" onClick={handleSelectVeoApiKey}>
                                     <Icon name="key" /> API Kulcs Kiválasztása
                                 </button>
                             </div>
                         )}
                         <div className="form-group">
-                            <label htmlFor="videoUpload">Videó feltöltése:</label>
-                            <input type="file" id="videoUpload" accept="video/mp4,video/quicktime" onChange={e => setVideoFile(e.target.files?.[0] || null)} />
-                            {videoFile && <p>Feltöltött fájl: {videoFile.name}</p>}
+                            <label htmlFor="videoUpload" className="file-upload-label">Videó feltöltése:</label>
+                            <input type="file" id="videoUpload" accept="video/mp4,video/quicktime" onChange={e => setVideoFile(e.target.files?.[0] || null)} className="form-input-file" />
+                            {videoFile && <p className="file-name">Feltöltött fájl: {videoFile.name}</p>}
                         </div>
                         <div className="form-group">
                             <label htmlFor="editVideoPrompt">Extendálási leírás:</label>
-                            <textarea id="editVideoPrompt" className="creative-prompt-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le, mit szeretne hozzáadni a videó végéhez (pl. 'adj hozzá 7 másodpercet egy kutyáról, ami fut')..." rows={3}></textarea>
+                            <textarea id="editVideoPrompt" className="creative-prompt-textarea form-textarea" value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Írja le, mit szeretne hozzáadni a videó végéhez (pl. 'adj hozzá 7 másodpercet egy kutyáról, ami fut')..." rows={3}></textarea>
                         </div>
-                        <button className="btn btn-primary" onClick={handleEditVideo} disabled={isGenerating || !videoFile || !hasVeoApiKey}>
+                        <button className="btn btn-primary edit-video-btn" onClick={handleEditVideo} disabled={isGenerating || !videoFile || !hasVeoApiKey}>
                             <Icon name={isGenerating ? 'progress_activity' : 'movie_filter'} />
                             {isGenerating ? loadingMessage : 'Videó Extendálása'}
                         </button>
                         {editedVideoUrl && (
-                            <div className="generated-content-output">
-                                <h4>Extendált Videó:</h4>
+                            <div className="generated-content-output video-output">
+                                <h4 className="output-title">Extendált Videó:</h4>
                                 <video src={editedVideoUrl} controls className="generated-media"></video>
                                 <a href={editedVideoUrl} download="edited-video.mp4" className="btn btn-secondary download-link">Letöltés</a>
                             </div>
@@ -1847,23 +1858,23 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
 
     return (
         <div className="view-fade-in creative-tools-view">
-            <Card fullHeight header={<h2>Kreatív Eszközök</h2>}>
+            <Card fullHeight header={<h2 className="view-title">Kreatív Eszközök</h2>}>
                 <div className="creative-tools-nav">
-                    <button className={`btn btn-segment ${activeTool === 'generate_image' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_image'); setPrompt(''); setGeneratedImageUrl(null); setEditedImageUrl(null); setImageFile(null); setGeneratedVideoUrl(null); setEditedVideoUrl(null); setVideoFile(null); setIsGenerating(false); setLoadingMessage(''); }}>
-                        <Icon name="image" /> Kép Generálása
+                    <button className={`btn btn-segment ${activeTool === 'generate_image' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_image'); resetToolStates(); }}>
+                        <Icon name="image" /> <span className="segment-label">Kép Generálása</span>
                     </button>
-                    <button className={`btn btn-segment ${activeTool === 'generate_video' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_video'); setPrompt(''); setGeneratedImageUrl(null); setEditedImageUrl(null); setImageFile(null); setGeneratedVideoUrl(null); setEditedVideoUrl(null); setVideoFile(null); setIsGenerating(false); setLoadingMessage(''); }}>
-                        <Icon name="movie" /> Videó Generálása
+                    <button className={`btn btn-segment ${activeTool === 'generate_video' ? 'active' : ''}`} onClick={() => { setActiveTool('generate_video'); resetToolStates(); }}>
+                        <Icon name="movie" /> <span className="segment-label">Videó Generálása</span>
                     </button>
-                     <button className={`btn btn-segment ${activeTool === 'edit_image' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_image'); setPrompt(''); setGeneratedImageUrl(null); setEditedImageUrl(null); setImageFile(null); setGeneratedVideoUrl(null); setEditedVideoUrl(null); setVideoFile(null); setIsGenerating(false); setLoadingMessage(''); }}>
-                        <Icon name="edit" /> Kép Szerkesztése
+                     <button className={`btn btn-segment ${activeTool === 'edit_image' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_image'); resetToolStates(); }}>
+                        <Icon name="edit" /> <span className="segment-label">Kép Szerkesztése</span>
                     </button>
-                    <button className={`btn btn-segment ${activeTool === 'edit_video' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_video'); setPrompt(''); setGeneratedImageUrl(null); setEditedImageUrl(null); setImageFile(null); setGeneratedVideoUrl(null); setEditedVideoUrl(null); setVideoFile(null); setIsGenerating(false); setLoadingMessage(''); }}>
-                        <Icon name="movie_filter" /> Videó Szerkesztése
+                    <button className={`btn btn-segment ${activeTool === 'edit_video' ? 'active' : ''}`} onClick={() => { setActiveTool('edit_video'); resetToolStates(); }}>
+                        <Icon name="movie_filter" /> <span className="segment-label">Videó Szerkesztése</span>
                     </button>
                 </div>
-                <div className="creative-tools-content">
-                    {isGenerating && <div className="loading-overlay"><div className="spinner"></div><p>{loadingMessage}</p></div>}
+                <div className="creative-tools-content custom-scrollbar">
+                    {isGenerating && <div className="loading-overlay"><div className="spinner"></div><p className="loading-message">{loadingMessage}</p></div>}
                     {renderContent()}
                 </div>
             </Card>
@@ -2002,10 +2013,10 @@ const MindMapView = ({ data }: { data: MindMapNode }) => {
 
 
     return (
-        <div className="view-fade-in" style={{height: '100%', display: 'flex', flexDirection: 'column'}}>
+        <div className="view-fade-in mind-map-view-container" style={{height: '100%', display: 'flex', flexDirection: 'column'}}>
             <Card fullHeight>
                 <div 
-                    className="mind-map-view" 
+                    className="mind-map-canvas" 
                     ref={containerRef}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
@@ -2035,9 +2046,9 @@ const MindMapView = ({ data }: { data: MindMapNode }) => {
                     </svg>
 
                      <div className="mind-map-controls">
-                        <button className="btn btn-icon" onClick={() => zoom(1.2)}><Icon name="add"/></button>
-                        <button className="btn btn-icon" onClick={() => zoom(0.8)}><Icon name="remove"/></button>
-                        <button className="btn btn-icon" onClick={() => { setPan({x:0, y:0}); setScale(1); }}><Icon name="center_focus_strong"/></button>
+                        <button className="btn btn-icon" onClick={() => zoom(1.2)} aria-label="Nagyítás"><Icon name="add"/></button>
+                        <button className="btn btn-icon" onClick={() => zoom(0.8)} aria-label="Kicsinyítés"><Icon name="remove"/></button>
+                        <button className="btn btn-icon" onClick={() => { setPan({x:0, y:0}); setScale(1); }} aria-label="Középre igazítás"><Icon name="center_focus_strong"/></button>
                     </div>
                 </div>
             </Card>
@@ -2095,6 +2106,9 @@ const App = () => {
                 isMobileMenuOpen={isMobileMenuOpen}
                 setMobileMenuOpen={setMobileMenuOpen}
             />
+            {isMobile && isMobileMenuOpen && (
+                <div className="mobile-menu-overlay" onClick={() => setMobileMenuOpen(false)}></div>
+            )}
             <div className="main-content">
                 <GlobalHeader currentView={currentView} onMenuClick={() => setMobileMenuOpen(true)} />
                 <main className="view-content">
