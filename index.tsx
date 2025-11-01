@@ -1,7 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
@@ -12,15 +8,15 @@ import remarkGfm from 'remark-gfm';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+// Consolidated `declare global` blocks to resolve TypeScript error.
+// Fix: Inline the AIStudio interface definition directly into Window to avoid potential conflicts
+// with external or implicit declarations of AIStudio or window.aistudio.
 declare global {
-    interface AIStudio {
-        hasSelectedApiKey: () => Promise<boolean>;
-        openSelectKey: () => Promise<void>;
-    }
     interface Window {
-        SpeechRecognition: any;
-        webkitSpeechRecognition: any;
-        aistudio: AIStudio;
+        aistudio: {
+            hasSelectedApiKey: () => Promise<boolean>;
+            openSelectKey: () => Promise<void>;
+        };
     }
 }
 
@@ -230,7 +226,7 @@ const mockDocs: DocItem[] = [
     { id: 'doc-2', type: 'link', title: 'Gemini API Dokumentáció', content: 'https://ai.google.dev/gemini-api/docs', createdAt: new Date('2024-07-29').toISOString() },
     { id: 'doc-3', type: 'image', title: 'Új Logó Terv', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0NSIgZmlsbD0iI2YxYzQwZiIvPjxwYXRoIGQ9Ik01MCwyMEw3NSw3MEwyNSw3MFoiIGZpbGw9IiNlNzRhM2MiLz48L3N2Zz4=', createdAt: new Date('2024-07-28').toISOString() },
     { id: 'doc-4', type: 'note', title: 'Projekt V7 Ötletek', content: 'Felhasználói authentikáció OAuth2-vel. Adatbázis séma optimalizálása. Valós idejű értesítések implementálása WebSocket segítségével.', createdAt: new Date('2024-07-25').toISOString() },
-    { id: 'doc-5', type: 'image', title: 'AI által generált kép', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhZmU5ZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY2NvbG9yPSIjNTNiOGI0Ii8+PC9saW5lYXJncmFkaWVudD48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNnKSIvPjwvc3ZnPg==', createdAt: new Date('2024-08-01').toISOString() }
+    { id: 'doc-5', type: 'image', title: 'AI által generált kép', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQuImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhZmU5ZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY2NvbG9yPSIjNTNiOGI0Ii8+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZykiLz48L3N2Zz4=', createdAt: new Date('2024-08-01').toISOString() }
 ];
 
 const mockProposals: Proposal[] = [
@@ -274,6 +270,9 @@ const mockTasks: TaskItem[] = [
     { id: 'task-5', title: 'Heti riport elkészítése', status: 'Teendő', priority: 'Közepes', category: 'Munka', createdAt: '2024-08-02', dueDate: '2024-08-05' },
     { id: 'task-6', title: 'Bevásárlás', status: 'Teendő', priority: 'Alacsony', category: 'Személyes', createdAt: '2024-08-02' },
     { id: 'task-7', title: 'Pályázati anyagok összegyűjtése', status: 'Folyamatban', priority: 'Magas', proposalId: 'prop-1', createdAt: '2024-07-30', dueDate: '2024-08-20' },
+    { id: 'task-8', title: 'Ügyfél prezentáció előkészítése', description: 'Prezentáció az új ügyfélnek a Q4-es kampányról.', status: 'Teendő', priority: 'Magas', category: 'Ügyfél', createdAt: '2024-08-03', dueDate: '2024-08-09' },
+    { id: 'task-9', title: 'Költségvetés áttekintése', description: 'Áttekintés és módosítás a havi költségvetésen.', status: 'Teendő', priority: 'Közepes', category: 'Munka', createdAt: '2024-08-03', dueDate: '2024-08-07' },
+    { id: 'task-10', title: 'Új feature design tervezése', description: 'UX/UI tervek készítése a mobil app új funkciójához.', status: 'Folyamatban', priority: 'Magas', category: 'Projekt', createdAt: '2024-08-01', dueDate: '2024-08-10' },
 ];
 
 const mockPlannerEvents: PlannerEvent[] = [
@@ -394,26 +393,24 @@ const useMediaQuery = (query: string) => {
     return matches;
 };
 
-const Icon = ({ name, filled }: { name: string, filled?: boolean }) => <span className={`material-symbols-outlined ${filled ? 'filled' : ''}`}>{name}</span>;
+// Fix: Add className prop to Icon component definition
+const Icon = ({ name, filled, className }: { name: string, filled?: boolean, className?: string }) => <span className={`material-symbols-outlined ${filled ? 'filled' : ''} ${className || ''}`}>{name}</span>;
 
 
 // --- UI COMPONENTS ---
 
-// FIX: Make children optional to handle type errors from the language server.
 const Card = ({ children, className = '', header, fullHeight, style }: { children?: React.ReactNode, className?: string, header?: React.ReactNode, fullHeight?: boolean, style?: React.CSSProperties }) => (
     <div className={`card ${className}`} style={{ height: fullHeight ? '100%' : 'auto', ...style }}>
         {header && <div className="card-header">{header}</div>}
-        <div className="card-body" style={{ height: fullHeight && header ? 'calc(100% - 65px)' : fullHeight ? '100%' : 'auto' }}>
+        <div className="card-body" style={{ height: fullHeight && header ? 'calc(100% - 65px)' : fullHeight ? '100%' : 'auto', overflowY: fullHeight ? 'auto' : 'visible' }}>
             {children}
         </div>
     </div>
 );
 
-// FIX: Make children optional to handle type errors from the language server.
 const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children?: React.ReactNode }) => {
     if (!isOpen) return null;
 
-    // FIX: Use createPortal from 'react-dom' directly.
     return createPortal(
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -430,7 +427,6 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose:
     );
 };
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const NotificationComponent: React.FC<{ notification: Notification, onDismiss: (id: string) => void }> = ({ notification, onDismiss }) => {
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -461,7 +457,6 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
         }
     };
 
-    // FIX: Change to React.FC to fix `key` prop type error.
     const NavLink: React.FC<{ item: NavItem }> = ({ item }) => (
         <li>
             <a href="#" className={`nav-link ${currentView === item.id ? 'active' : ''}`} onClick={() => handleNavClick(item.id)}>
@@ -471,7 +466,6 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
         </li>
     );
 
-    // FIX: Change to React.FC to fix `key` prop type error.
     const NavSection: React.FC<{ item: NavItem }> = ({ item }) => {
         const isOpen = openSections[item.id] || false;
         return (
@@ -534,32 +528,134 @@ const GlobalHeader = ({ currentView, onMenuClick }) => {
 
 // --- VIEWS ---
 
-const DashboardView = ({ tasks, emails }) => (
-    <div className="dashboard-grid">
-        <Card className="stagger-item" header={<h4>Hamarosan lejáró feladatok</h4>}>
-            <ul className="quick-list">
-                {tasks.filter(t => t.dueDate).slice(0, 5).map(task => (
-                    <li key={task.id}>
-                        <span>{task.title}</span>
-                        <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
-                    </li>
-                ))}
-            </ul>
-        </Card>
-        <Card className="stagger-item" style={{animationDelay: '100ms'}} header={<h4>Legutóbbi Emailek</h4>}>
-             <ul className="quick-list email-list">
-                {emails.slice(0, 5).map(email => (
-                    <li key={email.id}>
-                       <div>
-                            <span className="email-sender">{email.sender}</span>
-                            <p className="email-subject">{email.subject}</p>
-                       </div>
-                    </li>
-                ))}
-            </ul>
-        </Card>
-    </div>
-);
+const DashboardView = ({ tasks, emails, addNotification }: { tasks: TaskItem[], emails: EmailMessage[], addNotification: (notification: Omit<Notification, 'id'>) => void }) => {
+    const [weeklySummary, setWeeklySummary] = useState<string | null>(null);
+    const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+
+    const handleGenerateWeeklySummary = async () => {
+        setIsGeneratingSummary(true);
+        setWeeklySummary(null); // Clear previous summary
+
+        try {
+            const today = new Date();
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Monday
+            startOfWeek.setHours(0, 0, 0, 0); // Set to start of day
+            const endOfWeek = new Date(today);
+            endOfWeek.setDate(today.getDate() - today.getDay() + 7); // Sunday
+            endOfWeek.setHours(23, 59, 59, 999); // Set to end of day
+
+            const relevantTasks = tasks.filter(task => {
+                const taskDueDate = task.dueDate ? new Date(task.dueDate) : null;
+                const isUpcomingOrActive = (task.status === 'Teendő' || task.status === 'Folyamatban');
+                
+                // Include active tasks, and tasks due this week (startOfWeek to endOfWeek)
+                return isUpcomingOrActive && (!taskDueDate || (taskDueDate >= startOfWeek && taskDueDate <= endOfWeek));
+            });
+
+            if (relevantTasks.length === 0) {
+                setWeeklySummary("Nincsenek releváns feladatok erre a hétre. Ideje pihenni, vagy új kihívásokat keresni!");
+                addNotification({ message: 'Nincs generálható összefoglaló: Nincsenek releváns feladatok.', type: 'info' });
+                return;
+            }
+
+            const taskList = relevantTasks.map(task => 
+                `- ${task.title} (Státusz: ${task.status}, Prioritás: ${task.priority}${task.dueDate ? `, Határidő: ${task.dueDate}` : ''})`
+            ).join('\n');
+
+            const prompt = `
+                Összegezd az alábbi heti feladatokat, és javasolj 2-3 fő fókuszterületet a hétre.
+                Kérlek, vedd figyelembe a feladatok státuszát és prioritását.
+                Az összefoglaló legyen tömör, hasznos, és motiváló.
+                Formázd az eredményt Markdown-ban, címmel és felsorolásokkal.
+
+                Feladatok:
+                ${taskList}
+            `;
+
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: { parts: [{ text: prompt }] },
+                config: {
+                    systemInstruction: "Te egy hatékony és segítőkész asszisztens vagy, aki képes feladatlistákból releváns összefoglalókat és fókuszterületeket javasolni, a motiváció fenntartása érdekében.",
+                    temperature: 0.7,
+                    topP: 0.95,
+                    topK: 64,
+                },
+            });
+
+            setWeeklySummary(response.text);
+            addNotification({ message: 'Összefoglaló sikeresen elkészítve!', type: 'success' });
+
+        } catch (error: any) {
+            console.error("Error generating weekly summary:", error);
+            addNotification({ message: `Hiba az összefoglaló generálása során: ${error.message || 'Ismeretlen hiba'}`, type: 'error' });
+            setWeeklySummary("Hiba történt az összefoglaló generálása során. Kérjük, próbálja újra.");
+        } finally {
+            setIsGeneratingSummary(false);
+        }
+    };
+
+    return (
+        <div className="dashboard-grid">
+            <Card fullHeight className="weekly-summary-card stagger-item" header={
+                <div className="card-header-ai">
+                    <h4>Heti Feladat Összefoglaló</h4>
+                    <span className="ai-badge">AI</span>
+                </div>
+            }>
+                {isGeneratingSummary ? (
+                    <div className="loading-state">
+                        <div className="spinner"></div>
+                        <p>Heti összefoglaló generálása... Ez eltarthat egy percig.</p>
+                    </div>
+                ) : weeklySummary ? (
+                    <>
+                        <div className="summary-content-scrollable">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{weeklySummary}</ReactMarkdown>
+                        </div>
+                        <button className="btn btn-secondary btn-small refresh-summary-btn" onClick={handleGenerateWeeklySummary} aria-label="Összefoglaló frissítése">
+                            <Icon name="refresh" />
+                            <span>Frissítés</span>
+                        </button>
+                    </>
+                ) : (
+                    <div className="empty-state">
+                        <Icon name="auto_awesome" className="empty-state-icon" />
+                        <p>Kattintson az alábbi gombra a heti feladat-összefoglaló elkészítéséhez és a fókuszterületek javaslatához.</p>
+                        <button className="btn btn-primary" onClick={handleGenerateWeeklySummary} aria-label="Heti összefoglaló generálása">
+                            <Icon name="auto_awesome" />
+                            <span>Összefoglaló Generálása</span>
+                        </button>
+                    </div>
+                )}
+            </Card>
+            <Card className="stagger-item" style={{animationDelay: '100ms'}} header={<h4>Hamarosan lejáró feladatok</h4>}>
+                <ul className="quick-list">
+                    {tasks.filter(t => t.dueDate && t.status !== 'Kész').sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).slice(0, 5).map(task => (
+                        <li key={task.id}>
+                            <span>{task.title}</span>
+                            <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
+                        </li>
+                    ))}
+                </ul>
+            </Card>
+            <Card className="stagger-item" style={{animationDelay: '200ms'}} header={<h4>Legutóbbi Emailek</h4>}>
+                 <ul className="quick-list email-list">
+                    {emails.slice(0, 5).map(email => (
+                        <li key={email.id}>
+                           <div>
+                                <span className="email-sender">{email.sender}</span>
+                                <p className="email-subject">{email.subject}</p>
+                           </div>
+                        </li>
+                    ))}
+                </ul>
+            </Card>
+        </div>
+    );
+};
 
 const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -615,7 +711,7 @@ const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
         return { monthGrid, monthName, year };
     }, [currentDate]);
     
-    const weekDays = ['Hétfő', 'Kedd', 'Csütörtök', 'Péntek', 'Szombat', 'Vasárnap'];
+    const weekDays = ['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat', 'Vasárnap']; // Fixed Tuesday to Szerda here
 
     const getEventsForDay = (day: Date) => {
         const dateString = day.toISOString().split('T')[0];
@@ -664,7 +760,6 @@ const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
     );
 };
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const TaskCard: React.FC<{ task: TaskItem }> = ({ task }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [{ isDragging }, drag] = useDrag(() => ({
@@ -691,7 +786,6 @@ const TaskCard: React.FC<{ task: TaskItem }> = ({ task }) => {
     );
 };
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const KanbanColumn: React.FC<{ status: TaskStatus, tasks: TaskItem[], onDropTask: (taskId: string, newStatus: TaskStatus) => void }> = ({ status, tasks, onDropTask }) => {
     const ref = useRef<HTMLDivElement>(null);
     const [{ isOver }, drop] = useDrop(() => ({
@@ -806,13 +900,13 @@ const EmailView = ({ emails: initialEmails, addTask, addNotification }) => {
             console.error("Error generating task from email:", error);
             addNotification({ message: 'Hiba történt a feladat létrehozása során.', type: 'error' });
         } finally {
-            setIsGenerating(false);
+            setIsProcessing(false);
         }
     };
 
     const handleSaveTask = (taskData: Partial<TaskItem>) => {
         const finalTask = {
-            title: taskData.title,
+            title: taskData.title!, // Use non-null assertion as title is required by schema
             description: taskData.description,
             dueDate: taskData.dueDate,
             priority: taskData.priority || 'Közepes',
@@ -897,19 +991,19 @@ const EmailView = ({ emails: initialEmails, addTask, addNotification }) => {
     );
 };
 
-const TaskCreationModal = ({ isOpen, onClose, initialTaskData, onSave }) => {
-    const [taskData, setTaskData] = useState(initialTaskData);
+const TaskCreationModal = ({ isOpen, onClose, initialTaskData, onSave }: { isOpen: boolean, onClose: () => void, initialTaskData: Partial<TaskItem>, onSave: (taskData: Partial<TaskItem>) => void }) => {
+    const [taskData, setTaskData] = useState<Partial<TaskItem>>(initialTaskData);
 
     useEffect(() => {
         setTaskData(initialTaskData);
     }, [initialTaskData]);
     
-    const handleChange = (e) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setTaskData(prev => ({...prev, [name]: value}));
     };
     
-    const handleSubmit = (e) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(taskData);
     };
@@ -939,7 +1033,6 @@ const TaskCreationModal = ({ isOpen, onClose, initialTaskData, onSave }) => {
 };
 
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const ProjectCard: React.FC<{ project: Project, tasks: TaskItem[] }> = ({ project, tasks }) => {
     const ref = useRef(null);
     const [{ isDragging }, drag] = useDrag(() => ({
@@ -972,12 +1065,10 @@ const ProjectCard: React.FC<{ project: Project, tasks: TaskItem[] }> = ({ projec
     );
 };
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const ProjectKanbanColumn: React.FC<{ status: ProjectStatus, projects: Project[], tasks: TaskItem[], onDropProject: (id: string, newStatus: ProjectStatus) => void }> = ({ status, projects, tasks, onDropProject }) => {
     const ref = useRef(null);
     const [{ isOver }, drop] = useDrop(() => ({
         accept: 'PROJECT',
-        // FIX: Add type to the dropped item to resolve TypeScript error.
         drop: (item: { id: string }) => onDropProject(item.id, status),
         collect: (monitor) => ({ isOver: !!monitor.isOver() }),
     }));
@@ -996,7 +1087,7 @@ const ProjectKanbanColumn: React.FC<{ status: ProjectStatus, projects: Project[]
     );
 };
 
-const ProjectsKanbanView = ({ projects, tasks, updateProjectStatus }) => {
+const ProjectsKanbanView = ({ projects, tasks, updateProjectStatus }: { projects: Project[], tasks: TaskItem[], updateProjectStatus: (id: string, newStatus: ProjectStatus) => void }) => {
     const statuses: ProjectStatus[] = ['Tervezés', 'Fejlesztés', 'Tesztelés', 'Kész'];
      const projectsByStatus = statuses.reduce((acc, status) => {
         acc[status] = projects.filter(p => p.status === status);
@@ -1112,7 +1203,7 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
             <Card header={<h4>Közelgő Határidők</h4>} className="stagger-item" style={{ animationDelay: '100ms' }}>
                 <ul className="quick-list">
                     {upcomingDeadlines.map(p => {
-                         const daysLeft = Math.ceil((new Date(p.dueDate).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
+                         const daysLeft = Math.ceil((new Date(p.dueDate!).getTime() - new Date().getTime()) / (1000 * 3600 * 24));
                         return (
                              <li key={p.id}>
                                 <div>
@@ -1128,7 +1219,7 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
              <Card header={<h4>Kiemelt Feladatok</h4>} className="stagger-item" style={{ gridColumn: '1 / -1', animationDelay: '200ms' }}>
                  <ul className="quick-list">
                     {keyTasks.map(task => {
-                        const project = getProjectById(task.projectId);
+                        const project = getProjectById(task.projectId!); // Use non-null assertion as projectId is filtered
                         return (
                             <li key={task.id}>
                                 <div>
@@ -1149,7 +1240,6 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
 };
 
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const ProposalCard: React.FC<{ proposal: Proposal }> = ({ proposal }) => (
     <div className="proposal-card stagger-item">
         <div className="proposal-card-header">
@@ -1229,7 +1319,6 @@ const TrainingsView = ({ trainings }: { trainings: TrainingItem[] }) => {
     );
 };
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const ContactCard: React.FC<{ contact: Contact }> = ({ contact }) => {
     const initial = contact.name.charAt(0).toUpperCase();
 
@@ -1262,13 +1351,13 @@ const ContactCard: React.FC<{ contact: Contact }> = ({ contact }) => {
                 )}
             </div>
             <div className="contact-card-footer">
-                {(contact.linkedProjectIds?.length > 0 || contact.linkedProposalIds?.length > 0) && (
+                {(contact.linkedProjectIds?.length! > 0 || contact.linkedProposalIds?.length! > 0) && ( // Use non-null assertion if lengths are checked
                      <div className="contact-links">
                         <Icon name="link" />
                         <span>
-                            {contact.linkedProjectIds?.length > 0 && `${contact.linkedProjectIds.length} projekt`}
-                            {(contact.linkedProjectIds?.length > 0 && contact.linkedProposalIds?.length > 0) && ', '}
-                            {contact.linkedProposalIds?.length > 0 && `${contact.linkedProposalIds.length} pályázat`}
+                            {contact.linkedProjectIds?.length! > 0 && `${contact.linkedProjectIds!.length} projekt`}
+                            {(contact.linkedProjectIds?.length! > 0 && contact.linkedProposalIds?.length! > 0) && ', '}
+                            {contact.linkedProposalIds?.length! > 0 && `${contact.linkedProposalIds!.length} pályázat`}
                         </span>
                     </div>
                 )}
@@ -1297,7 +1386,7 @@ const ContactsView = ({ contacts }: { contacts: Contact[] }) => {
     );
 };
 
-const FinancesView = ({ transactions, budgets }) => {
+const FinancesView = ({ transactions, budgets }: { transactions: Transaction[], budgets: Budget[] }) => {
     const thisMonthTransactions = transactions.filter(t => new Date(t.date).getMonth() === new Date().getMonth());
     const income = thisMonthTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
     const expense = thisMonthTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
@@ -1351,11 +1440,11 @@ const FinancesView = ({ transactions, budgets }) => {
     );
 };
 
-const DocsView = ({ docs: initialDocs, addDoc }) => {
+const DocsView = ({ docs: initialDocs, addDoc }: { docs: DocItem[], addDoc: (doc: DocItem) => void }) => {
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     
-    const handleSubmit = (e) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if(!title || !content) return;
         const newDoc: DocItem = {
@@ -1370,7 +1459,6 @@ const DocsView = ({ docs: initialDocs, addDoc }) => {
         setContent('');
     }
 
-    // FIX: Change to React.FC to fix `key` prop type error.
     const DocCard: React.FC<{ doc: DocItem }> = ({ doc }) => {
         switch(doc.type) {
             case 'note': return <div className="doc-card note-card"><h4>{doc.title}</h4><p>{doc.content.substring(0, 100)}...</p></div>
@@ -1784,7 +1872,6 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
 };
 
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const MindMapNodeComponent: React.FC<{ node: MindMapNode; onUpdatePosition: (id: string, rect: any) => void; }> = ({ node, onUpdatePosition }) => {
     const [isExpanded, setExpanded] = useState(true);
     const nodeRef = useRef(null);
@@ -1828,7 +1915,6 @@ const MindMapNodeComponent: React.FC<{ node: MindMapNode; onUpdatePosition: (id:
     );
 };
 
-// FIX: Change to React.FC to fix `key` prop type error.
 const ConnectorLine: React.FC<{ from: any; to: any; containerRect: any; }> = ({ from, to, containerRect }) => {
     if (!from || !to) return null;
     
@@ -1848,30 +1934,30 @@ const ConnectorLine: React.FC<{ from: any; to: any; containerRect: any; }> = ({ 
 };
 
 
-const MindMapView = ({ data }) => {
+const MindMapView = ({ data }: { data: MindMapNode }) => {
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [scale, setScale] = useState(1);
     const [isPanning, setIsPanning] = useState(false);
     const [startPoint, setStartPoint] = useState({ x: 0, y: 0 });
-    const [nodePositions, setNodePositions] = useState({});
+    const [nodePositions, setNodePositions] = useState<Record<string, any>>({});
     
-    const containerRef = useRef(null);
-    const contentRef = useRef(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
 
-    const handleUpdatePosition = useCallback((id, rect) => {
+    const handleUpdatePosition = useCallback((id: string, rect: any) => {
         setNodePositions(prev => ({
             ...prev,
             [id]: { ...rect, id }
         }));
     }, []);
 
-    const handleMouseDown = (e) => {
+    const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
         setIsPanning(true);
         setStartPoint({ x: e.clientX - pan.x, y: e.clientY - pan.y });
     };
 
-    const handleMouseMove = (e) => {
+    const handleMouseMove = (e: React.MouseEvent) => {
         if (!isPanning) return;
         setPan({
             x: e.clientX - startPoint.x,
@@ -1887,22 +1973,22 @@ const MindMapView = ({ data }) => {
         setIsPanning(false);
     };
 
-    const handleWheel = (e) => {
+    const handleWheel = (e: React.WheelEvent) => {
         e.preventDefault();
         const newScale = Math.min(Math.max(0.2, scale - e.deltaY * 0.001), 2);
         setScale(newScale);
     };
     
-    const zoom = (factor) => {
+    const zoom = (factor: number) => {
         setScale(prev => Math.min(Math.max(0.2, prev * factor), 2));
     }
     
-    const [connections, setConnections] = useState([]);
+    const [connections, setConnections] = useState<Array<{from: string, to: string}>>([]);
     const containerRect = containerRef.current?.getBoundingClientRect();
 
     useEffect(() => {
-        const newConnections = [];
-        const findConnections = (node) => {
+        const newConnections: Array<{from: string, to: string}> = [];
+        const findConnections = (node: MindMapNode) => {
             if (node.children) {
                 node.children.forEach(child => {
                     newConnections.push({ from: node.id, to: child.id });
@@ -1942,8 +2028,8 @@ const MindMapView = ({ data }) => {
                                 key={`${conn.from}-${conn.to}`}
                                 from={nodePositions[conn.from]}
                                 to={nodePositions[conn.to]}
-                                // FIX: Provide a valid Rect-like object for containerRect
-                                containerRect={{x: containerRef.current.getBoundingClientRect().x, y: containerRef.current.getBoundingClientRect().y, width: 0, height: 0}}
+                                // Provide a valid Rect-like object for containerRect
+                                containerRect={{x: containerRef.current!.getBoundingClientRect().x, y: containerRef.current!.getBoundingClientRect().y, width: 0, height: 0}}
                              />
                         ))}
                     </svg>
@@ -1979,7 +2065,7 @@ const App = () => {
 
     const renderView = () => {
         switch (currentView) {
-            case 'dashboard': return <DashboardView tasks={data.tasks} emails={data.emails} />;
+            case 'dashboard': return <DashboardView tasks={data.tasks} emails={data.emails} addNotification={addNotification} />;
             case 'planner': return <PlannerView events={data.plannerEvents} />;
             case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus} />;
             case 'email': return <EmailView emails={data.emails} addTask={data.addTask} addNotification={addNotification} />;
@@ -1994,7 +2080,7 @@ const App = () => {
             case 'mind_map': return <MindMapView data={data.mindMap} />;
             case 'creative_tools': return <CreativeToolsView addDoc={data.addDoc} addNotification={addNotification} />;
             case 'meeting_assistant': return <MeetingAssistantView />;
-            default: return <DashboardView tasks={data.tasks} emails={data.emails} />;
+            default: return <DashboardView tasks={data.tasks} emails={data.emails} addNotification={addNotification} />;
         }
     };
 
