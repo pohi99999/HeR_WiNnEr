@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
@@ -16,13 +17,21 @@ interface AIStudio {
 
 declare global {
     interface Window {
-        aistudio: AIStudio;
+        // FIX: Made aistudio optional to resolve declaration conflict errors.
+        // The calling code already checks for its existence.
+        aistudio?: AIStudio;
     }
 }
 
 const API_KEY = process.env.API_KEY;
 
 // --- DATA INTERFACES ---
+interface User {
+    name: string;
+    email: string;
+    avatarInitial: string;
+}
+
 interface Message {
     id: string;
     text: string;
@@ -226,7 +235,7 @@ const mockDocs: DocItem[] = [
     { id: 'doc-2', type: 'link', title: 'Gemini API Dokumentáció', content: 'https://ai.google.dev/gemini-api/docs', createdAt: new Date('2024-07-29').toISOString() },
     { id: 'doc-3', type: 'image', title: 'Új Logó Terv', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0NSIgZmlsbD0iI2YxYzQwZiIvPjxwYXRoIGQ9Ik01MCwyMEw3NSw3MEwyNSw3MFoiIGZpbGw9IiNlNzRhM2MiLz48L3N2Zz4=', createdAt: new Date('2024-07-28').toISOString() },
     { id: 'doc-4', type: 'note', title: 'Projekt V7 Ötletek', content: 'Felhasználói authentikáció OAuth2-vel. Adatbázis séma optimalizálása. Valós idejű értesítések implementálása WebSocket segítségével.', createdAt: new Date('2024-07-25').toISOString() },
-    { id: 'doc-5', type: 'image', title: 'AI által generált kép', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQuImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhZmU5ZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY2NvbG9yPSIjNTNiOGI0Ii8+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZykiLz48L3N2Zz4=', createdAt: new Date('2024-08-01').toISOString() }
+    { id: 'doc-5', type: 'image', title: 'AI által generált kép', content: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQuImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNhZmU5ZWEiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM1NiJiOGI0Ii8+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZykiLz48L3N2Zz4=', createdAt: new Date('2024-08-01').toISOString() }
 ];
 
 const mockProposals: Proposal[] = [
@@ -504,24 +513,92 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
     );
 };
 
-const GlobalHeader = ({ currentView, onMenuClick }) => {
+const GlobalHeader = ({ currentView, onMenuClick, user, onLogout }: { currentView: string, onMenuClick: () => void, user: User | null, onLogout: () => void }) => {
     const isMobile = useMediaQuery('(max-width: 1024px)');
+    const [isDropdownOpen, setDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
     const currentNavItem = navItems.flatMap(i => i.subItems || i).find(i => i.id === currentView);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [dropdownRef]);
+
     return (
         <header className="global-header">
              {isMobile && (
-                <button className="mobile-menu-toggle" onClick={onMenuClick} aria-label="Mobil menü megnyitása">
+                <button className="mobile-menu-toggle btn btn-icon btn-secondary" onClick={onMenuClick} aria-label="Mobil menü megnyitása">
                     <Icon name="menu" />
                 </button>
             )}
             <h3 className="view-title">{currentNavItem?.label || 'Irányítópult'}</h3>
             <div className="global-header-actions">
-                <button className="user-profile-button">
-                    <div className="avatar-sm">F</div>
-                    <span className="user-name">Felhasználó</span>
-                </button>
+                {user && (
+                    <div className="user-profile-container" ref={dropdownRef}>
+                        <button className={`user-profile-button ${isDropdownOpen ? 'open' : ''}`} onClick={() => setDropdownOpen(!isDropdownOpen)}>
+                            <div className="avatar-sm">{user.avatarInitial}</div>
+                            {!isMobile && <span className="user-name">{user.name}</span>}
+                             <Icon name="expand_more" />
+                        </button>
+                        {isDropdownOpen && (
+                            <div className="profile-dropdown">
+                                <div className="dropdown-user-info">
+                                    <strong>{user.name}</strong>
+                                    <span>{user.email}</span>
+                                </div>
+                                <button onClick={() => { onLogout(); setDropdownOpen(false); }} className="dropdown-item">
+                                    <Icon name="logout" />
+                                    <span>Kijelentkezés</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </header>
+    );
+};
+
+// --- AUTHENTICATION VIEW ---
+const LoginView = ({ onLogin }: { onLogin: (user: User) => void }) => {
+    const handleLoginClick = () => {
+        // In a real app, this would trigger the Google OAuth flow.
+        // Here, we simulate a successful login with mock user data.
+        onLogin({
+            name: 'Pohánka Péter',
+            email: 'iam@peterpohanka.com',
+            avatarInitial: 'P',
+        });
+    };
+
+    return (
+        <div className="login-view-container">
+            <div className="aurora-background">
+                <div className="aurora-shape aurora-shape1"></div>
+                <div className="aurora-shape aurora-shape2"></div>
+                <div className="aurora-shape aurora-shape3"></div>
+            </div>
+            <div className="login-box">
+                <h2 className="app-title">P-Day Light</h2>
+                <p className="login-subtitle">A személyes és munkahelyi asszisztensed. Jelentkezz be a Google-fiókoddal a funkciók teljes eléréséhez.</p>
+                <button className="google-signin-btn" onClick={handleLoginClick}>
+                    <svg className="google-logo" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.42-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                        <path fill="none" d="M0 0h48v48H0z"></path>
+                    </svg>
+                    <span>Bejelentkezés Google-fiókkal</span>
+                </button>
+            </div>
+        </div>
     );
 };
 
@@ -611,8 +688,9 @@ const DashboardView = ({ tasks, emails, addNotification }: { tasks: TaskItem[], 
                     </div>
                 ) : weeklySummary ? (
                     <>
-                        <div className="summary-content-scrollable">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]} className="react-markdown-content">{weeklySummary}</ReactMarkdown>
+                        <div className="summary-content-scrollable react-markdown-content">
+                            {/* FIX: The className prop is not valid on ReactMarkdown. Moved it to the parent div. */}
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{weeklySummary}</ReactMarkdown>
                         </div>
                         <button className="btn btn-secondary btn-small refresh-summary-btn" onClick={handleGenerateWeeklySummary} aria-label="Összefoglaló frissítése">
                             <Icon name="refresh" />
@@ -1354,9 +1432,9 @@ const ContactCard: React.FC<{ contact: Contact }> = ({ contact }) => {
                      <div className="contact-links">
                         <Icon name="link" />
                         <span>
-                            {contact.linkedProjectIds?.length! > 0 && `${contact.linkedProjectIds!.length} projekt`}
-                            {(contact.linkedProjectIds?.length! > 0 && contact.linkedProposalIds?.length! > 0) && ', '}
-                            {contact.linkedProposalIds?.length! > 0 && `${contact.linkedProposalIds!.length} pályázat`}
+                            {contact.linkedProjectIds!.length > 0 && `${contact.linkedProjectIds!.length} projekt`}
+                            {(contact.linkedProjectIds!.length > 0 && contact.linkedProposalIds!.length > 0) && ', '}
+                            {contact.linkedProposalIds!.length > 0 && `${contact.linkedProposalIds!.length} pályázat`}
                         </span>
                     </div>
                 )}
@@ -2062,6 +2140,7 @@ const App = () => {
     const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
+    const [user, setUser] = useState<User | null>(null);
     const isMobile = useMediaQuery('(max-width: 1024px)');
     const data = useMockData();
 
@@ -2072,6 +2151,15 @@ const App = () => {
     
     const dismissNotification = (id: string) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
+    };
+    
+    const handleLogin = (loggedInUser: User) => {
+        setUser(loggedInUser);
+        addNotification({ message: `Üdvözlünk, ${loggedInUser.name}!`, type: 'success' });
+    };
+
+    const handleLogout = () => {
+        setUser(null);
     };
 
     const renderView = () => {
@@ -2095,6 +2183,10 @@ const App = () => {
         }
     };
 
+    if (!user) {
+        return <LoginView onLogin={handleLogin} />;
+    }
+
     return (
         <div className={`app-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${isMobileMenuOpen ? 'mobile-menu-open' : ''}`}>
             <Sidebar 
@@ -2110,7 +2202,12 @@ const App = () => {
                 <div className="mobile-menu-overlay" onClick={() => setMobileMenuOpen(false)}></div>
             )}
             <div className="main-content">
-                <GlobalHeader currentView={currentView} onMenuClick={() => setMobileMenuOpen(true)} />
+                <GlobalHeader 
+                    currentView={currentView} 
+                    onMenuClick={() => setMobileMenuOpen(true)}
+                    user={user}
+                    onLogout={handleLogout}
+                />
                 <main className="view-content">
                     {renderView()}
                 </main>
