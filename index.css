@@ -1,3 +1,4 @@
+
 /* Global Styles & Design System Overhaul */
 :root {
     /* Font & Typography */
@@ -943,9 +944,26 @@ p {
 /* --- Planner View --- */
 .planner-view .view-header {
     margin-bottom: var(--spacing-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
 }
 .planner-view .view-header .view-title {
     font-size: 1.8rem; /* Adjusted for mobile */
+}
+
+.planner-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    flex-wrap: wrap;
+}
+
+.planner-header-actions .btn .google-logo {
+    width: 18px;
+    height: 18px;
 }
 
 .calendar-container {

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
@@ -9,17 +10,14 @@ import remarkGfm from 'remark-gfm';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
-// Define the AIStudio interface explicitly to resolve TypeScript error regarding type conflicts.
-interface AIStudio {
-    hasSelectedApiKey: () => Promise<boolean>;
-    openSelectKey: () => Promise<void>;
-}
-
+// FIX: Inlined the AIStudio type to prevent potential global type conflicts.
 declare global {
     interface Window {
-        // FIX: Made aistudio optional to resolve declaration conflict errors.
         // The calling code already checks for its existence.
-        aistudio?: AIStudio;
+        aistudio?: {
+            hasSelectedApiKey: () => Promise<boolean>;
+            openSelectKey: () => Promise<void>;
+        };
     }
 }
 
@@ -289,6 +287,13 @@ const mockPlannerEvents: PlannerEvent[] = [
     { id: 'event-2', title: 'Marketing Kampány Indítása', date: '2024-08-12', type: 'deadline', description: 'Q3 Kampány start' },
     { id: 'event-3', title: 'Edzés', date: '2024-08-05', time: '18:00', duration: 90, type: 'personal' },
     { id: 'event-4', title: 'Pályázat beadási határidő', date: '2024-09-15', type: 'proposal_deadline' }
+];
+
+const mockGoogleCalendarEvents: PlannerEvent[] = [
+    { id: 'gcal-event-1', title: '[GCal] Negyedéves Stratégiai Míting', date: '2024-08-06', time: '14:00', duration: 120, type: 'meeting', location: 'Google Meet', source: 'Google Calendar' },
+    { id: 'gcal-event-2', title: '[GCal] Fogorvos', date: '2024-08-08', time: '11:30', duration: 45, type: 'personal', location: 'Rendelő', source: 'Google Calendar' },
+    { id: 'gcal-event-3', title: '[GCal] P-Day Kft. - Heti Szinkron', date: '2024-08-12', time: '09:00', duration: 60, type: 'work', location: 'Google Meet', source: 'Google Calendar' },
+    { id: 'gcal-event-4', title: '[GCal] Ebéd Annával', date: '2024-08-14', time: '12:30', duration: 90, type: 'personal', source: 'Google Calendar' },
 ];
 
 const mockEmails: EmailMessage[] = [
@@ -652,7 +657,7 @@ const DashboardView = ({ tasks, emails, addNotification }: { tasks: TaskItem[], 
             const ai = new GoogleGenAI({ apiKey: API_KEY });
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
-                contents: { parts: [{ text: prompt }] },
+                contents: [{ parts: [{ text: prompt }] }],
                 config: {
                     systemInstruction: "Te egy hatékony és segítőkész asszisztens vagy, aki képes feladatlistákból releváns összefoglalókat és fókuszterületeket javasolni, a motiváció fenntartása érdekében.",
                     temperature: 0.7,
@@ -734,7 +739,7 @@ const DashboardView = ({ tasks, emails, addNotification }: { tasks: TaskItem[], 
     );
 };
 
-const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
+const PlannerView = ({ events, isConnected, onConnectToggle }: { events: PlannerEvent[], isConnected: boolean, onConnectToggle: () => void }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const changeMonth = (offset: number) => {
@@ -800,11 +805,23 @@ const PlannerView = ({ events }: { events: PlannerEvent[] }) => {
             <Card header={
                 <div className="view-header" style={{marginBottom: 0, flexWrap: 'nowrap'}}>
                     <h2 className="view-title">Tervező</h2>
-                    <div className="calendar-controls">
-                        <button className="btn btn-icon btn-secondary" onClick={() => changeMonth(-1)} aria-label="Previous month"><Icon name="chevron_left" /></button>
-                         <h3 className="calendar-current-date">{`${year} ${monthName}`}</h3>
-                        <button className="btn btn-icon btn-secondary" onClick={() => changeMonth(1)} aria-label="Next month"><Icon name="chevron_right" /></button>
-                        <button className="btn btn-secondary" onClick={goToToday}>Ma</button>
+                    <div className="planner-header-actions">
+                         <button className={`btn ${isConnected ? 'btn-secondary' : 'btn-primary'}`} onClick={onConnectToggle}>
+                            <svg className="google-logo" viewBox="0 0 48 48">
+                                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.42-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                                <path fill="none" d="M0 0h48v48H0z"></path>
+                            </svg>
+                            <span>{isConnected ? 'Naptár Lecsatlakoztatva' : 'Google Naptárral'}</span>
+                        </button>
+                        <div className="calendar-controls">
+                            <button className="btn btn-icon btn-secondary" onClick={() => changeMonth(-1)} aria-label="Previous month"><Icon name="chevron_left" /></button>
+                             <h3 className="calendar-current-date">{`${year} ${monthName}`}</h3>
+                            <button className="btn btn-icon btn-secondary" onClick={() => changeMonth(1)} aria-label="Next month"><Icon name="chevron_right" /></button>
+                            <button className="btn btn-secondary" onClick={goToToday}>Ma</button>
+                        </div>
                     </div>
                 </div>
             }>
@@ -1769,10 +1786,11 @@ const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem)
             operation = await ai.models.generateVideos({
                 model: 'veo-3.1-generate-preview', // Use the generate-preview model for more advanced features like video extension
                 prompt: prompt,
-                video: {
-                    videoBytes: base64VideoData,
-                    mimeType: videoFile.type
-                },
+                // FIX: The 'video' parameter for extending a video expects a `Video` object from a previously generated video, not uploaded video bytes. This functionality is not supported by the API as per the provided guidelines. The parameter has been removed to prevent a runtime error.
+                // video: {
+                //     videoBytes: base64VideoData,
+                //     mimeType: videoFile.type
+                // },
                 config: {
                     numberOfVideos: 1,
                     resolution: '720p', // Assume 720p for extension for simplicity, as only 720p videos can be extended
@@ -2112,13 +2130,13 @@ const MindMapView = ({ data }: { data: MindMapNode }) => {
                         </ul>
                     </div>
                      <svg className="mind-map-svg-layer" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}>
+                        {/* FIX: Pass the containerRect object directly to avoid re-calculating and potential null reference errors. */}
                         {containerRect && connections.map(conn => (
                              <ConnectorLine 
                                 key={`${conn.from}-${conn.to}`}
                                 from={nodePositions[conn.from]}
                                 to={nodePositions[conn.to]}
-                                // Provide a valid Rect-like object for containerRect
-                                containerRect={{x: containerRef.current!.getBoundingClientRect().x, y: containerRef.current!.getBoundingClientRect().y, width: 0, height: 0}}
+                                containerRect={containerRect}
                              />
                         ))}
                     </svg>
@@ -2141,6 +2159,7 @@ const App = () => {
     const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [user, setUser] = useState<User | null>(null);
+    const [isCalendarConnected, setCalendarConnected] = useState(false);
     const isMobile = useMediaQuery('(max-width: 1024px)');
     const data = useMockData();
 
@@ -2162,10 +2181,23 @@ const App = () => {
         setUser(null);
     };
 
+    const handleCalendarConnect = () => {
+        const newState = !isCalendarConnected;
+        setCalendarConnected(newState);
+        addNotification({
+            message: `Google Naptár ${newState ? 'csatlakoztatva' : 'lecsatlakoztatva'}.`,
+            type: 'info'
+        });
+    };
+
     const renderView = () => {
         switch (currentView) {
             case 'dashboard': return <DashboardView tasks={data.tasks} emails={data.emails} addNotification={addNotification} />;
-            case 'planner': return <PlannerView events={data.plannerEvents} />;
+            case 'planner': return <PlannerView 
+                                        events={isCalendarConnected ? mockGoogleCalendarEvents : data.plannerEvents} 
+                                        isConnected={isCalendarConnected}
+                                        onConnectToggle={handleCalendarConnect}
+                                    />;
             case 'tasks': return <TasksView tasks={data.tasks} updateTaskStatus={data.updateTaskStatus} />;
             case 'email': return <EmailView emails={data.emails} addTask={data.addTask} addNotification={addNotification} />;
             case 'project_overview': return <ProjectOverviewView projects={data.projects} tasks={data.tasks} />;
