@@ -1361,7 +1361,7 @@ const ProjectOverviewView = ({ projects, tasks }: { projects: Project[], tasks: 
                                         {project && <span className="task-project-name">{project.title}</span>}
                                     </div>
                                 </div>
-                                <span className={`task-priority priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
+                                <span className="task-priority priority-${task.priority.toLowerCase()}">{task.priority}</span>
                             </li>
                         );
                     })}
@@ -2130,7 +2130,236 @@ const RoutePlannerView = ({ addNotification }: { addNotification: (n: Omit<Notif
     );
 };
 
-const MeetingAssistantView = () => <Card header={<h2 className="view-title">Meeting Asszisztens</h2>}><p>Meeting Asszisztens helyőrző</p></Card>;
+const MeetingAssistantView = ({ addNotification }: { addNotification: (n: Omit<Notification, 'id'>) => void }) => {
+    const [isRecording, setIsRecording] = useState(false);
+    const [transcript, setTranscript] = useState<string>("");
+    const [analysis, setAnalysis] = useState<{ summary: string; actionItems: string[] } | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    
+    // Audio Context Refs
+    const inputAudioContextRef = useRef<AudioContext | null>(null);
+    const sessionRef = useRef<any>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+
+    // Stop recording cleanup
+    const stopRecording = useCallback(() => {
+        setIsRecording(false);
+        
+        if (sessionRef.current) {
+            // Close logic if available or just let it go out of scope
+            // Note: The library does not expose a close() method on session object directly in prompt examples, 
+            // but typical websocket connection should be closed. 
+            // We'll rely on audio context closing to stop the stream for now or just set flags.
+        }
+
+        if (inputAudioContextRef.current) {
+            inputAudioContextRef.current.close();
+            inputAudioContextRef.current = null;
+        }
+
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+    }, []);
+
+    const startRecording = async () => {
+        try {
+            setTranscript("");
+            setAnalysis(null);
+            setIsRecording(true);
+
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+            inputAudioContextRef.current = inputAudioContext;
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+
+            // Connect to Live API
+            const sessionPromise = ai.live.connect({
+                model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+                callbacks: {
+                    onopen: () => {
+                        console.log("Meeting Assistant Connected");
+                        const source = inputAudioContext.createMediaStreamSource(stream);
+                        const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
+                        
+                        scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                            const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                             const l = inputData.length;
+                            const int16 = new Int16Array(l);
+                            for (let i = 0; i < l; i++) {
+                                int16[i] = inputData[i] * 32768;
+                            }
+                            const pcmBlob = {
+                                data: encode(new Uint8Array(int16.buffer)),
+                                mimeType: 'audio/pcm;rate=16000',
+                            };
+
+                            sessionPromise.then((session) => {
+                                session.sendRealtimeInput({ media: pcmBlob });
+                            });
+                        };
+                        
+                        source.connect(scriptProcessor);
+                        scriptProcessor.connect(inputAudioContext.destination);
+                    },
+                    onmessage: (message: LiveServerMessage) => {
+                        // Accumulate transcription
+                         if (message.serverContent?.inputTranscription) {
+                            const text = message.serverContent.inputTranscription.text;
+                            setTranscript(prev => prev + text);
+                        }
+                    },
+                    onclose: () => {
+                        console.log("Meeting Assistant Disconnected");
+                        stopRecording();
+                    },
+                    onerror: (e) => {
+                        console.error("Meeting Assistant Error", e);
+                        addNotification({ message: 'Hiba a kapcsolatban.', type: 'error' });
+                        stopRecording();
+                    }
+                },
+                config: {
+                    responseModalities: [Modality.AUDIO], // We must accept audio, but we will ignore it in UI
+                    inputAudioTranscription: { model: "gemini-2.5-flash-native-audio-preview-09-2025" }, // Enable transcription
+                    systemInstruction: "You are a silent meeting scribe. Listen carefully and transcribe. Do not speak or interrupt."
+                }
+            });
+
+            sessionPromise.then(sess => {
+                sessionRef.current = sess;
+            });
+
+        } catch (error: any) {
+            console.error("Failed to start meeting assistant", error);
+            addNotification({ message: `Hiba az indításkor: ${error.message}`, type: 'error' });
+            stopRecording();
+        }
+    };
+    
+    const analyzeTranscript = async () => {
+        if (!transcript.trim()) {
+            addNotification({ message: 'Nincs mit elemezni. A tranzkript üres.', type: 'error' });
+            return;
+        }
+
+        setIsAnalyzing(true);
+        try {
+             const ai = new GoogleGenAI({ apiKey: API_KEY });
+             const schema = {
+                type: Type.OBJECT,
+                properties: {
+                    summary: { type: Type.STRING, description: "A concise summary of the meeting." },
+                    actionItems: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                        description: "List of specific action items identified from the transcript."
+                    }
+                },
+                required: ["summary", "actionItems"]
+            };
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `Analyze the following meeting transcript. Provide a summary and action items.\n\nTranscript:\n${transcript}`,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: schema
+                }
+            });
+            
+            const result = JSON.parse(response.text);
+            setAnalysis(result);
+            addNotification({ message: 'Elemzés kész!', type: 'success' });
+
+        } catch (error: any) {
+            console.error("Analysis failed", error);
+            addNotification({ message: 'Hiba az elemzés során.', type: 'error' });
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    // Clean up on unmount
+    useEffect(() => {
+        return () => {
+            if (isRecording) {
+                stopRecording();
+            }
+        };
+    }, []);
+
+    return (
+        <div className="view-fade-in meeting-assistant-view">
+             <div className="dashboard-grid"> {/* Reuse grid layout */}
+                <Card fullHeight header={<h2 className="view-title">Meeting Asszisztens</h2>} style={{ gridRow: 'span 2' }}>
+                     <div className="meeting-controls">
+                        {!isRecording ? (
+                            <button className="btn btn-primary btn-large" onClick={startRecording}>
+                                <Icon name="mic" /> Felvétel Indítása
+                            </button>
+                        ) : (
+                             <button className="btn btn-warning btn-large recording-btn" onClick={stopRecording}>
+                                <span className="recording-pulse"></span>
+                                <Icon name="stop" /> Leállítás
+                            </button>
+                        )}
+                        <button className="btn btn-secondary" onClick={analyzeTranscript} disabled={isRecording || !transcript || isAnalyzing}>
+                            <Icon name={isAnalyzing ? 'progress_activity' : 'analytics'} />
+                            {isAnalyzing ? 'Elemzés...' : 'Elemzés & Összefoglalás'}
+                        </button>
+                    </div>
+                    
+                    <div className="transcript-container custom-scrollbar">
+                        {transcript ? (
+                            <p className="transcript-text">{transcript}</p>
+                        ) : (
+                            <div className="empty-state-text">
+                                <p>Kezdje el a felvételt a beszélgetés átiratának készítéséhez...</p>
+                            </div>
+                        )}
+                    </div>
+                </Card>
+                
+                <Card header={<h4 className="card-title">Összefoglaló</h4>} className="stagger-item">
+                    {analysis ? (
+                        <div className="analysis-content">
+                            <p>{analysis.summary}</p>
+                        </div>
+                    ) : (
+                        <div className="empty-placeholder">
+                            <Icon name="summarize" style={{ fontSize: '48px', color: 'var(--color-text-tertiary)', opacity: 0.5 }} />
+                            <p>Az elemzés után itt jelenik meg az összefoglaló.</p>
+                        </div>
+                    )}
+                </Card>
+
+                <Card header={<h4 className="card-title">Teendők</h4>} className="stagger-item" style={{ animationDelay: '100ms' }}>
+                     {analysis ? (
+                         <ul className="quick-list">
+                            {analysis.actionItems.map((item, idx) => (
+                                <li key={idx}>
+                                    <div style={{alignItems: 'flex-start'}}>
+                                        <Icon name="check_box_outline_blank" style={{marginTop: '2px'}} />
+                                        <span>{item}</span>
+                                    </div>
+                                </li>
+                            ))}
+                         </ul>
+                    ) : (
+                         <div className="empty-placeholder">
+                            <Icon name="checklist" style={{ fontSize: '48px', color: 'var(--color-text-tertiary)', opacity: 0.5 }} />
+                            <p>Az elemzés után itt jelennek meg a teendők.</p>
+                        </div>
+                    )}
+                </Card>
+            </div>
+        </div>
+    );
+};
 
 const CreativeToolsView = ({ addDoc, addNotification }: { addDoc: (doc: DocItem) => void, addNotification: (notification: Omit<Notification, 'id'>) => void }) => {
     const [activeTool, setActiveTool] = useState<'generate_image' | 'generate_video' | 'edit_image' | 'edit_video'>('generate_image');
@@ -2682,7 +2911,7 @@ const App = () => {
             case 'route_planner': return <RoutePlannerView addNotification={addNotification} />;
             case 'creative_tools': return <CreativeToolsView addDoc={addDoc} addNotification={addNotification} />;
             case 'mind_map': return <MindMapView data={mindMap} />;
-            case 'meeting_assistant': return <MeetingAssistantView />;
+            case 'meeting_assistant': return <MeetingAssistantView addNotification={addNotification} />;
             default: return <DashboardView tasks={tasks} emails={emails} addNotification={addNotification} />;
         }
     };
