@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createPortal } from 'react-dom';
@@ -539,7 +540,7 @@ const Sidebar = ({ currentView, setView, isCollapsed, setCollapsed, isMobile, is
         <aside className={`sidebar ${isCollapsed ? 'sidebar-collapsed' : ''} ${isMobile && isMobileMenuOpen ? 'mobile-open' : ''}`}>
             <div className="sidebar-inner">
                 <header className="sidebar-header">
-                    {(!isCollapsed || isMobile) && <h2 className="app-title">P-Day Light</h2>}
+                    {(!isCollapsed || isMobile) && <h2 className="app-title">HeR WiNnEr</h2>}
                      {!isMobile && (
                         <button className="collapse-toggle" onClick={() => setCollapsed(!isCollapsed)} aria-label={isCollapsed ? "Sidebar kibontása" : "Sidebar összecsukása"}>
                             <Icon name={isCollapsed ? 'menu_open' : 'menu'} />
@@ -628,7 +629,7 @@ const LoginView = ({ onLogin }: { onLogin: (user: User) => void }) => {
                 <div className="aurora-shape aurora-shape3"></div>
             </div>
             <div className="login-box">
-                <h2 className="app-title">P-Day Light</h2>
+                <h2 className="app-title">HeR WiNnEr</h2>
                 <p className="login-subtitle">A személyes és munkahelyi asszisztensed. Jelentkezz be a Google-fiókoddal a funkciók teljes eléréséhez.</p>
                 <button className="google-signin-btn" onClick={handleLoginClick}>
                     <svg className="google-logo" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
@@ -1376,7 +1377,7 @@ const ProposalCard: React.FC<{ proposal: Proposal }> = ({ proposal }) => (
     <div className="proposal-card stagger-item">
         <div className="proposal-card-header">
             <h3 className="proposal-title">{proposal.title}</h3>
-            <span className={`proposal-status status-${proposal.status.toLowerCase().replace(/ /g, '-').replace(/á/g, 'a').replace(/é/g, 'e')}`}>{proposal.status}</span>
+            <span className={`proposal-status status-${proposal.status.toLowerCase().replace(/ /g, '-').replace(/é/g, 'e').replace(/á/g, 'a')}`}>{proposal.status}</span>
         </div>
         <p className="proposal-funder">{proposal.funder}</p>
         <p className="proposal-summary">{proposal.summary}</p>
@@ -1619,7 +1620,7 @@ const GeminiChatView = ({ addTask, addNotification }) => {
         {
             id: 'init',
             role: 'model',
-            text: "Szia! Én a P-Day Light asszisztensed vagyok. Hozzáadhatok új feladatokat, összefoglalhatom a projektjeidet, és válaszolhatok a kérdéseidre. Miben segíthetek?",
+            text: "Szia! Én a HeR WiNnEr asszisztensed vagyok. Hozzáadhatok új feladatokat, összefoglalhatom a projektjeidet, és válaszolhatok a kérdéseidre. Miben segíthetek?",
         }
     ]);
     const [isLoading, setIsLoading] = useState(false);
@@ -1666,7 +1667,7 @@ const GeminiChatView = ({ addTask, addNotification }) => {
             model: 'gemini-3-pro-preview',
             config: {
                 tools: [{ functionDeclarations: [addTaskTool] }, { googleSearch: {} }, { googleMaps: {} }],
-                systemInstruction: "You are a helpful assistant for the P-Day Light application. Today's date is " + new Date().toLocaleDateString('hu-HU') + ". When a user asks to add a task, use the addTask tool. Always confirm the action after the tool has been used successfully."
+                systemInstruction: "You are a helpful assistant for the HeR WiNnEr application. Today's date is " + new Date().toLocaleDateString('hu-HU') + ". When a user asks to add a task, use the addTask tool. Always confirm the action after the tool has been used successfully."
             }
         });
     }, [addTask, addNotification]);
