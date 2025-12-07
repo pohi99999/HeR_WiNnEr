@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
-import { createPortal } from 'react-dom';
-import { GoogleGenAI, Chat, FunctionDeclaration, Type } from "@google/genai";
+import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -18,11 +17,8 @@ interface ChatMessage {
     id: string;
     role: 'user' | 'model';
     text: string;
-    isAction?: boolean;
-    groundingMetadata?: any;
 }
 
-// Financial Data Types
 interface FinanceState {
     pettyCash: number;
     bankBalance: number;
@@ -30,31 +26,13 @@ interface FinanceState {
     lastUpdated: string;
 }
 
-// Structured Note Types
-interface LoanRecord {
-    id: string;
-    name: string;
-    date: string;
-    amount: number;
-    returned: number;
-    isPaidOff: boolean;
-}
-
 interface NoteItem {
     id: string;
     type: 'text' | 'voice' | 'loan';
     title: string;
     content?: string;
-    loanData?: LoanRecord;
+    loanData?: any;
     timestamp: string;
-}
-
-interface PlannerEvent {
-    id: string;
-    title: string;
-    date: string;
-    time?: string;
-    type: 'meeting' | 'personal' | 'work';
 }
 
 // --- MOCK DATA ---
@@ -88,7 +66,7 @@ const INITIAL_LOANS: NoteItem[] = [
     }
 ];
 
-const MOCK_EVENTS: PlannerEvent[] = [
+const MOCK_EVENTS = [
     { id: 'e1', title: 'Könyvelői egyeztetés', date: new Date().toISOString().split('T')[0], time: '10:00', type: 'work' },
     { id: 'e2', title: 'NAV Határidő', date: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0], type: 'work' },
     { id: 'e3', title: 'Bevásárlás', date: new Date().toISOString().split('T')[0], time: '17:00', type: 'personal' }
@@ -96,64 +74,316 @@ const MOCK_EVENTS: PlannerEvent[] = [
 
 // --- UTILS ---
 const generateId = () => `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
 const Icon = ({ name, className = '', style }: { name: string, className?: string, style?: React.CSSProperties }) => (
     <span className={`material-symbols-outlined ${className}`} style={style}>{name}</span>
 );
 
+// Helper for Audio Processing
+const floatTo16BitPCM = (input: Float32Array) => {
+    const output = new Int16Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return output;
+};
+
+const base64ToUint8Array = (base64: string) => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+};
+
 // --- COMPONENTS ---
 
-// 1. LOGIN VIEW (S23 Style)
-const LoginView = ({ onLogin }: { onLogin: (user: User) => void }) => {
-    return (
-        <div className="login-screen">
-            <div className="login-content">
-                <div className="logo-orb">
-                    <Icon name="diamond" style={{fontSize: '48px', color: '#fff'}} />
-                </div>
-                <h1 className="app-title-large">HeR WiNnEr</h1>
-                <p className="login-subtitle">A Te személyes üzleti asszisztensed</p>
-                
-                <div className="user-card-preview" onClick={() => onLogin(MOCK_USER)}>
-                    <div className="avatar">{MOCK_USER.avatarInitial}</div>
-                    <div className="user-details">
-                        <span className="name">{MOCK_USER.name}</span>
-                        <span className="email">{MOCK_USER.email}</span>
-                    </div>
-                    <Icon name="arrow_forward_ios" style={{fontSize: '16px', opacity: 0.5}} />
-                </div>
+// 1. LIVE VOICE OVERLAY (New Feature)
+const LiveVoiceOverlay = ({ onClose }: { onClose: () => void }) => {
+    const [status, setStatus] = useState('Kapcsolódás...');
+    const [isTalking, setIsTalking] = useState(false);
+    
+    // Audio Refs
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+    const processorRef = useRef<ScriptProcessorNode | null>(null);
+    const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+    const nextStartTimeRef = useRef<number>(0);
+    const sessionRef = useRef<any>(null);
 
-                <div className="gmail-badge">
-                    <Icon name="mail" />
-                    <span>Gmail Integráció Aktív</span>
-                </div>
+    useEffect(() => {
+        let mounted = true;
+        const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+        const startSession = async () => {
+            try {
+                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+                streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: {
+                    sampleRate: 16000,
+                    channelCount: 1,
+                    echoCancellation: true
+                }});
+
+                const sessionPromise = ai.live.connect({
+                    model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+                    config: {
+                        responseModalities: [Modality.AUDIO],
+                        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+                        systemInstruction: "Te vagy a HeR WiNnEr app hangasszisztense. Rövid, kedves, magyar válaszokat adj. Egy üzletasszonnyal beszélsz."
+                    },
+                    callbacks: {
+                        onopen: () => {
+                            if (!mounted) return;
+                            setStatus('Hallgatlak...');
+                            
+                            // Input Processing
+                            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+                            const source = ctx.createMediaStreamSource(streamRef.current!);
+                            const processor = ctx.createScriptProcessor(4096, 1, 1);
+                            
+                            processor.onaudioprocess = (e) => {
+                                const inputData = e.inputBuffer.getChannelData(0);
+                                const pcmData = floatTo16BitPCM(inputData);
+                                const base64Data = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
+                                
+                                sessionPromise.then(session => {
+                                    session.sendRealtimeInput({
+                                        media: {
+                                            mimeType: 'audio/pcm;rate=16000',
+                                            data: base64Data
+                                        }
+                                    });
+                                });
+                            };
+
+                            source.connect(processor);
+                            processor.connect(ctx.destination);
+                            
+                            processorRef.current = processor;
+                            // sourceRef.current = source; // Type mismatch usually, simplified for demo
+                        },
+                        onmessage: async (msg: LiveServerMessage) => {
+                            if (!mounted) return;
+                            const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+                            if (audioData) {
+                                setIsTalking(true);
+                                const ctx = audioContextRef.current!;
+                                const audioBytes = base64ToUint8Array(audioData);
+                                
+                                // Simple decode logic for PCM from model if headerless, usually model sends PCM 24k
+                                // For simplicity using decodeAudioData which expects headers usually, 
+                                // BUT gemini sends raw PCM. We need to construct buffer manually.
+                                
+                                const float32 = new Float32Array(audioBytes.buffer); // Assuming standard conversion, or manual:
+                                // Manual decode for 24kHz PCM 16-bit little endian
+                                const int16 = new Int16Array(audioBytes.buffer);
+                                const audioBuffer = ctx.createBuffer(1, int16.length, 24000);
+                                const channelData = audioBuffer.getChannelData(0);
+                                for(let i=0; i<int16.length; i++) {
+                                    channelData[i] = int16[i] / 32768.0;
+                                }
+
+                                const source = ctx.createBufferSource();
+                                source.buffer = audioBuffer;
+                                source.connect(ctx.destination);
+                                
+                                const currentTime = ctx.currentTime;
+                                const startTime = Math.max(currentTime, nextStartTimeRef.current);
+                                source.start(startTime);
+                                nextStartTimeRef.current = startTime + audioBuffer.duration;
+                                
+                                source.onended = () => setIsTalking(false);
+                            }
+                        },
+                        onclose: () => {
+                           if(mounted) onClose();
+                        },
+                        onerror: (err) => {
+                            console.error(err);
+                            if(mounted) setStatus('Hiba történt.');
+                        }
+                    }
+                });
+                
+                const session = await sessionPromise;
+                sessionRef.current = session;
+
+            } catch (err) {
+                console.error("Live Init Error:", err);
+                setStatus("Mikrofon hozzáférés szükséges.");
+            }
+        };
+
+        startSession();
+
+        return () => {
+            mounted = false;
+            sessionRef.current?.close();
+            streamRef.current?.getTracks().forEach(t => t.stop());
+            processorRef.current?.disconnect();
+            audioContextRef.current?.close();
+        };
+    }, [onClose]);
+
+    return (
+        <div className="live-overlay">
+            <button className="close-btn" onClick={onClose}><Icon name="close" /></button>
+            <div className={`orb-container ${isTalking ? 'talking' : 'listening'}`}>
+                <div className="orb-core"></div>
+                <div className="orb-ring r1"></div>
+                <div className="orb-ring r2"></div>
+                <div className="orb-ring r3"></div>
+            </div>
+            <div className="live-status">{status}</div>
+            <div className="live-controls">
+                <button className="mute-btn"><Icon name="mic" /></button>
             </div>
         </div>
     );
 };
 
-// 2. AI ASSISTANT (HOME) VIEW
-const AssistantView = () => {
+// 2. RECEIPT SCANNER MODAL (New Feature)
+const ReceiptScannerModal = ({ onClose, onScanComplete }: { onClose: () => void, onScanComplete: (amount: number, type: string) => void }) => {
+    const [image, setImage] = useState<string | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                setImage(ev.target?.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const analyzeReceipt = async () => {
+        if (!image) return;
+        setIsAnalyzing(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const base64Data = image.split(',')[1];
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-pro-preview',
+                contents: {
+                    parts: [
+                        { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+                        { text: "Ez egy számla vagy nyugta. Elemezd és add meg a végösszeget (csak szám) és a kategóriát (pl. Élelmiszer, Üzemanyag, Egyéb). Válasz formátum JSON: { \"amount\": 1200, \"category\": \"Üzemanyag\" }" }
+                    ]
+                },
+                config: { responseMimeType: "application/json" }
+            });
+            
+            const result = JSON.parse(response.text || '{}');
+            if (result.amount) {
+                onScanComplete(result.amount, result.category || 'Egyéb');
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Nem sikerült elemezni a képet.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+                <h3>Számla Elemzése</h3>
+                {!image ? (
+                    <div className="upload-zone">
+                        <label htmlFor="receipt-upload" className="upload-btn">
+                            <Icon name="add_a_photo" style={{fontSize: '40px'}}/>
+                            <span>Fotó készítése / Feltöltés</span>
+                        </label>
+                        <input id="receipt-upload" type="file" accept="image/*" onChange={handleFileChange} hidden />
+                    </div>
+                ) : (
+                    <div className="preview-zone">
+                        <img src={image} alt="Receipt" className="receipt-preview" />
+                        {isAnalyzing ? (
+                            <div className="analyzing-state">
+                                <Icon name="smart_toy" className="spin" />
+                                <span>Gemini Elemzés...</span>
+                            </div>
+                        ) : (
+                            <div className="action-row">
+                                <button className="btn-secondary" onClick={() => setImage(null)}>Újra</button>
+                                <button className="btn-primary" onClick={analyzeReceipt}>Elemzés</button>
+                            </div>
+                        )}
+                    </div>
+                )}
+                <button className="close-modal-text" onClick={onClose}>Mégse</button>
+            </div>
+        </div>
+    );
+};
+
+// 3. MORNING BRIEFING CARD
+const MorningBriefing = () => {
+    const [briefing, setBriefing] = useState('');
+    
+    useEffect(() => {
+        const fetchBriefing = async () => {
+            // Using Flash Lite for fast response
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const prompt = `
+                Dátum: ${new Date().toLocaleDateString('hu-HU')}.
+                Események: ${JSON.stringify(MOCK_EVENTS)}.
+                Pénzügy: ${JSON.stringify(INITIAL_FINANCE)}.
+                Készíts egy nagyon rövid (max 2 mondat) reggeli motiváló összefoglalót a HeR WiNnEr felhasználónak.
+            `;
+            try {
+                const result = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash-lite',
+                    contents: prompt,
+                });
+                setBriefing(result.text || 'Legyen sikeres napod!');
+            } catch (e) {
+                setBriefing('Legyen sikeres napod, HeR WiNnEr!');
+            }
+        };
+        fetchBriefing();
+    }, []);
+
+    return (
+        <div className="morning-card glass-panel">
+            <div className="morning-icon"><Icon name="wb_sunny" /></div>
+            <div className="morning-content">
+                <h4>Reggeli Tájékoztató</h4>
+                <p>{briefing || 'Betöltés...'}</p>
+            </div>
+        </div>
+    );
+};
+
+// --- MODIFIED VIEWS ---
+
+const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([
         { id: '1', role: 'model', text: 'Szia! Miben segíthetek ma a vállalkozásod körül?' }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const chatRef = useRef<Chat | null>(null);
+    const chatRef = useRef<any>(null);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
     useEffect(() => {
-        // Initialize Gemini
         const ai = new GoogleGenAI({ apiKey: API_KEY });
         chatRef.current = ai.chats.create({
             model: 'gemini-3-pro-preview',
             config: {
-                systemInstruction: "Te vagy a HeR WiNnEr alkalmazás asszisztense. A felhasználó egy vállalkozó (herwinner@gmail.com). Segíts neki üzleti, pénzügyi és szervezési kérdésekben. Légy tömör, lényegretörő és motiváló. A válaszaid formázd Markdown-ban.",
-                thinkingConfig: { thinkingBudget: 1024 } // Low budget for faster snappy responses
+                systemInstruction: "Te vagy a HeR WiNnEr alkalmazás asszisztense. A felhasználó egy vállalkozó. Segíts neki üzleti, pénzügyi és szervezési kérdésekben. Használd a googleSearch eszközt ha aktuális infó kell.",
+                thinkingConfig: { thinkingBudget: 1024 },
+                tools: [{ googleSearch: {} }]
             }
         });
     }, []);
@@ -169,13 +399,17 @@ const AssistantView = () => {
 
         try {
             if (!chatRef.current) throw new Error("AI not ready");
-            
-            // Fix: sendMessage takes an object with message property
             const result = await chatRef.current.sendMessage({ message: userMsg.text });
-            // Fix: result is GenerateContentResponse, access text property directly
             const responseText = result.text || '';
+            
+            // Check for grounding
+            const grounding = result.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            let finalText = responseText;
+            if (grounding && grounding.length > 0) {
+                 finalText += "\n\n**Források:**\n" + grounding.map((g: any) => `- [${g.web?.title || 'Link'}](${g.web?.uri})`).join('\n');
+            }
 
-            setMessages(p => [...p, { id: generateId(), role: 'model', text: responseText }]);
+            setMessages(p => [...p, { id: generateId(), role: 'model', text: finalText }]);
         } catch (err) {
             setMessages(p => [...p, { id: generateId(), role: 'model', text: 'Hiba történt a kapcsolatban.' }]);
         } finally {
@@ -187,9 +421,15 @@ const AssistantView = () => {
         <div className="view-container assistant-view">
             <header className="view-header">
                 <h2>Asszisztens</h2>
-                <div className="status-dot online"></div>
+                <div className="header-actions">
+                     <button className="icon-btn" onClick={onStartLive} title="Live Hangvezérlés">
+                        <Icon name="graphic_eq" style={{color: 'var(--primary)'}} />
+                     </button>
+                </div>
             </header>
             
+            <MorningBriefing />
+
             <div className="chat-area custom-scrollbar">
                 {messages.map(msg => (
                     <div key={msg.id} className={`message ${msg.role}`}>
@@ -224,21 +464,72 @@ const AssistantView = () => {
     );
 };
 
-// 3. FINANCES VIEW
 const FinanceView = () => {
     const [finance, setFinance] = useState<FinanceState>(INITIAL_FINANCE);
+    const [showScanner, setShowScanner] = useState(false);
+    const [advisorTip, setAdvisorTip] = useState<string | null>(null);
+    const [isThinking, setIsThinking] = useState(false);
 
-    // Formatter
     const fmt = (n: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(n);
+
+    const handleScanComplete = (amount: number, category: string) => {
+        setShowScanner(false);
+        setFinance(prev => ({
+            ...prev,
+            pettyCash: prev.pettyCash - amount, // Assume expense
+            lastUpdated: new Date().toISOString()
+        }));
+        alert(`Sikeres rögzítés: ${fmt(amount)} (${category})`);
+    };
+
+    const getAdvice = async () => {
+        setIsThinking(true);
+        setAdvisorTip(null);
+        try {
+             const ai = new GoogleGenAI({ apiKey: API_KEY });
+             const response = await ai.models.generateContent({
+                 model: 'gemini-3-pro-preview',
+                 contents: `A vállalkozás állapota: Házi pénztár: ${finance.pettyCash}, Bank: ${finance.bankBalance}, Adók: ${finance.expectedTaxes}. Adj egy stratégiai pénzügyi tanácsot. Használd a thinking módot alapos elemzéshez.`,
+                 config: { thinkingConfig: { thinkingBudget: 2048 } }
+             });
+             setAdvisorTip(response.text);
+        } catch(e) {
+            setAdvisorTip("Jelenleg nem elérhető a tanácsadó.");
+        } finally {
+            setIsThinking(false);
+        }
+    };
 
     return (
         <div className="view-container finance-view">
             <header className="view-header">
                 <h2>Pénzügyi Kimutatás</h2>
+                <button className="icon-btn" onClick={getAdvice} title="Pénzügyi Tanácsadó">
+                    <Icon name="psychology" />
+                </button>
             </header>
 
+            {advisorTip && (
+                <div className="advisor-card glass-panel">
+                    <div className="advisor-header">
+                        <Icon name="auto_awesome" style={{color: 'var(--warning)'}}/>
+                        <span>Gemini Tanácsadó</span>
+                        <button className="close-tiny" onClick={() => setAdvisorTip(null)}><Icon name="close"/></button>
+                    </div>
+                    <div className="advisor-content">
+                        <ReactMarkdown>{advisorTip}</ReactMarkdown>
+                    </div>
+                </div>
+            )}
+             
+            {isThinking && (
+                 <div className="thinking-indicator">
+                    <Icon name="motion_mode" className="spin"/>
+                    <span>Elemzés folyamatban...</span>
+                 </div>
+            )}
+
             <div className="finance-grid">
-                {/* Petty Cash */}
                 <div className="finance-card glass-panel">
                     <div className="card-icon cash">
                         <Icon name="payments" />
@@ -249,7 +540,6 @@ const FinanceView = () => {
                     </div>
                 </div>
 
-                {/* Bank */}
                 <div className="finance-card glass-panel">
                     <div className="card-icon bank">
                         <Icon name="account_balance" />
@@ -260,7 +550,6 @@ const FinanceView = () => {
                     </div>
                 </div>
 
-                {/* Taxes */}
                 <div className="finance-card glass-panel warning">
                     <div className="card-icon tax">
                         <Icon name="gavel" />
@@ -271,7 +560,6 @@ const FinanceView = () => {
                     </div>
                 </div>
 
-                {/* Total Available */}
                 <div className="finance-summary glass-panel">
                     <h3>Likvid Tőke</h3>
                     <div className="big-number">{fmt(finance.pettyCash + finance.bankBalance - finance.expectedTaxes)}</div>
@@ -280,20 +568,20 @@ const FinanceView = () => {
             </div>
             
             <div className="finance-actions">
-                <button className="btn-action primary"><Icon name="add" /> Bevétel</button>
-                <button className="btn-action secondary"><Icon name="remove" /> Kiadás</button>
+                <button className="btn-action primary" onClick={() => alert("Bevétel funkció hamarosan...")}><Icon name="add" /> Bevétel</button>
+                <button className="btn-action secondary" onClick={() => setShowScanner(true)}><Icon name="receipt_long" /> Számla Elemzése</button>
             </div>
+
+            {showScanner && <ReceiptScannerModal onClose={() => setShowScanner(false)} onScanComplete={handleScanComplete} />}
         </div>
     );
 };
 
-// 4. NOTES & LOANS VIEW
 const NotesView = () => {
     const [notes, setNotes] = useState<NoteItem[]>(INITIAL_LOANS);
     const [filter, setFilter] = useState<'all' | 'loan'>('all');
 
     const addLoan = () => {
-        // Mocking adding a new loan logic
         const newLoan: NoteItem = {
             id: generateId(),
             type: 'loan',
@@ -370,9 +658,7 @@ const NotesView = () => {
     );
 };
 
-// 5. PLANNER (CALENDAR + GMAIL)
 const PlannerView = () => {
-    // Mock Calendar Grid Logic (Simplified for mobile view)
     const today = new Date();
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -431,65 +717,69 @@ const PlannerView = () => {
     );
 };
 
-// --- MAIN LAYOUT (MOBILE SHELL) ---
+const LoginView = ({ onLogin }: { onLogin: (user: User) => void }) => {
+    return (
+        <div className="login-screen">
+            <div className="login-content">
+                <div className="logo-orb">
+                    <Icon name="diamond" style={{fontSize: '48px', color: '#fff'}} />
+                </div>
+                <h1 className="app-title-large">HeR WiNnEr</h1>
+                <p className="login-subtitle">A Te személyes üzleti asszisztensed</p>
+                <div className="user-card-preview" onClick={() => onLogin(MOCK_USER)}>
+                    <div className="avatar">{MOCK_USER.avatarInitial}</div>
+                    <div className="user-details">
+                        <span className="name">{MOCK_USER.name}</span>
+                        <span className="email">{MOCK_USER.email}</span>
+                    </div>
+                    <Icon name="arrow_forward_ios" style={{fontSize: '16px', opacity: 0.5}} />
+                </div>
+                <div className="gmail-badge">
+                    <Icon name="mail" />
+                    <span>Gmail Integráció Aktív</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- APP ---
 const App = () => {
     const [user, setUser] = useState<User | null>(null);
     const [activeTab, setActiveTab] = useState('assistant');
+    const [showLive, setShowLive] = useState(false);
 
-    // Simulate login persistence for demo
-    useEffect(() => {
-        // setUser(MOCK_USER); 
-    }, []);
-
-    if (!user) {
-        return <LoginView onLogin={setUser} />;
-    }
+    if (!user) return <LoginView onLogin={setUser} />;
 
     return (
         <div className="app-shell">
             <div className="content-area">
-                {activeTab === 'assistant' && <AssistantView />}
+                {activeTab === 'assistant' && <AssistantView onStartLive={() => setShowLive(true)} />}
                 {activeTab === 'finance' && <FinanceView />}
                 {activeTab === 'notes' && <NotesView />}
                 {activeTab === 'planner' && <PlannerView />}
             </div>
+            
+            {showLive && <LiveVoiceOverlay onClose={() => setShowLive(false)} />}
 
-            {/* BOTTOM NAVIGATION BAR */}
             <nav className="bottom-nav">
-                <button 
-                    className={`nav-item ${activeTab === 'assistant' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('assistant')}
-                >
+                <button className={`nav-item ${activeTab === 'assistant' ? 'active' : ''}`} onClick={() => setActiveTab('assistant')}>
                     <Icon name="smart_toy" />
                     <span>Asszisztens</span>
                 </button>
-                <button 
-                    className={`nav-item ${activeTab === 'finance' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('finance')}
-                >
+                <button className={`nav-item ${activeTab === 'finance' ? 'active' : ''}`} onClick={() => setActiveTab('finance')}>
                     <Icon name="account_balance_wallet" />
                     <span>Pénzügy</span>
                 </button>
-                <button 
-                    className={`nav-item ${activeTab === 'notes' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('notes')}
-                >
+                <button className={`nav-item ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>
                     <Icon name="edit_note" />
                     <span>Jegyzet</span>
                 </button>
-                <button 
-                    className={`nav-item ${activeTab === 'planner' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('planner')}
-                >
+                <button className={`nav-item ${activeTab === 'planner' ? 'active' : ''}`} onClick={() => setActiveTab('planner')}>
                     <Icon name="calendar_month" />
                     <span>Naptár</span>
                 </button>
-                <a 
-                    href="https://www.google.com" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="nav-item link-item"
-                >
+                <a href="https://www.google.com" target="_blank" rel="noopener noreferrer" className="nav-item link-item">
                     <Icon name="search" />
                     <span>Keresés</span>
                 </a>
