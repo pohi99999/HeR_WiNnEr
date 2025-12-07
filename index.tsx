@@ -1167,48 +1167,111 @@ const CreativeView = () => {
 
 // PLANNER VIEW
 const PlannerView = () => {
-    const today = new Date();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
+    const [selectedDate, setSelectedDate] = useState(new Date());
     const [selectedEmail, setSelectedEmail] = useState<EmailItem | null>(null);
+
+    // Date Logic
+    const getDays = () => {
+        if (viewMode === 'month') {
+            const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
+            return Array.from({ length: daysInMonth }, (_, i) => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), i + 1));
+        } else {
+            // Week mode: show current week Mon-Sun
+            const curr = new Date(selectedDate);
+            const first = curr.getDate() - curr.getDay() + 1; // First day is the day of the month - the day of the week
+            return Array.from({ length: 7 }, (_, i) => new Date(curr.setDate(first + i)));
+        }
+    };
+    
+    const days = getDays();
+
+    const getFilteredEvents = () => {
+        if (viewMode === 'month') {
+             // Show events for selectedDate
+             const dateStr = selectedDate.toISOString().split('T')[0];
+             return MOCK_EVENTS.filter(ev => ev.date === dateStr);
+        } else {
+            // Show events for all displayed days (the week)
+            const weekStr = days.map(d => d.toISOString().split('T')[0]);
+            return MOCK_EVENTS.filter(ev => weekStr.includes(ev.date)).sort((a,b) => a.date.localeCompare(b.date));
+        }
+    };
+
+    const displayEvents = getFilteredEvents();
+
+    const handleDateSelect = (d: Date) => {
+        // Create new date to avoid mutation reference issues
+        setSelectedDate(new Date(d));
+    };
 
     return (
         <div className="view-container planner-view">
             <header className="view-header">
                 <h2>Naptár & Gmail</h2>
+                <div className="filter-tabs" style={{marginBottom: 0, width: '160px'}}>
+                    <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>Havi</button>
+                    <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>Heti</button>
+                </div>
             </header>
 
             <div className="calendar-strip">
                 <div className="month-label">
-                    {today.toLocaleString('hu-HU', { month: 'long', year: 'numeric' })}
+                    {selectedDate.toLocaleString('hu-HU', { month: 'long', year: 'numeric' })}
+                    {viewMode === 'week' && ' (Heti Nézet)'}
                 </div>
                 <div className="days-scroller hide-scrollbar">
-                    {days.map(d => (
-                        <div key={d} className={`day-chip ${d === today.getDate() ? 'active' : ''}`}>
-                            <span className="num">{d}</span>
-                            <span className="dot"></span>
-                        </div>
-                    ))}
+                    {days.map(d => {
+                        const isSelected = d.getDate() === selectedDate.getDate() && d.getMonth() === selectedDate.getMonth();
+                        const isToday = d.toDateString() === new Date().toDateString();
+                        return (
+                            <div 
+                                key={d.toISOString()} 
+                                className={`day-chip ${isSelected ? 'active' : ''} ${isToday ? 'today' : ''}`}
+                                onClick={() => handleDateSelect(d)}
+                            >
+                                <span className="day-name">{d.toLocaleDateString('hu-HU', { weekday: 'short' }).charAt(0)}</span>
+                                <span className="num">{d.getDate()}</span>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
             <div className="planner-content custom-scrollbar">
-                <div className="section-title">Mai Teendők</div>
-                {MOCK_EVENTS.map((ev: any) => (
-                    <div key={ev.id} className="event-card glass-panel">
-                        <div className={`event-strip ${ev.type}`}></div>
-                        <div className="event-time">{ev.time || 'Egész nap'}</div>
-                        <div className="event-details">
-                            <h4 className={ev.status === 'completed' ? 'completed-task' : ''}>{ev.title}</h4>
-                            <div className="event-meta-row">
-                                <span className="tag">{ev.type}</span>
-                                <span className={`status-pill ${ev.status || 'todo'}`}>
-                                    {ev.status === 'completed' ? 'Kész' : ev.status === 'in-progress' ? 'Folyamatban' : 'Teendő'}
-                                </span>
+                <div className="section-title">
+                    {viewMode === 'month' 
+                        ? `Teendők: ${selectedDate.toLocaleDateString('hu-HU', {month: 'long', day: 'numeric'})}`
+                        : "Heti Teendők Áttekintése"
+                    }
+                </div>
+                
+                {displayEvents.length > 0 ? (
+                    displayEvents.map((ev: any) => (
+                        <div key={ev.id} className="event-card glass-panel">
+                            {viewMode === 'week' && (
+                                <div className="weekly-group">
+                                    <span className="group-date">{ev.date}</span>
+                                </div>
+                            )}
+                            <div className={`event-strip ${ev.type}`}></div>
+                            <div className="event-time">{ev.time || 'Egész nap'}</div>
+                            <div className="event-details">
+                                <h4 className={ev.status === 'completed' ? 'completed-task' : ''}>{ev.title}</h4>
+                                <div className="event-meta-row">
+                                    <span className="tag">{ev.type}</span>
+                                    <span className={`status-pill ${ev.status || 'todo'}`}>
+                                        {ev.status === 'completed' ? 'Kész' : ev.status === 'in-progress' ? 'Folyamatban' : 'Teendő'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
+                    ))
+                ) : (
+                    <div className="empty-state" style={{padding: '20px'}}>
+                        <p style={{margin:0}}>Nincs rögzített esemény erre az időszakra.</p>
                     </div>
-                ))}
+                )}
 
                 <div className="section-title" style={{marginTop: '24px'}}>
                     <Icon name="mail" style={{marginRight:'8px', fontSize:'18px'}}/> 
