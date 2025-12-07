@@ -99,7 +99,7 @@ const base64ToUint8Array = (base64: string) => {
 
 // --- COMPONENTS ---
 
-// 1. LIVE VOICE OVERLAY (New Feature)
+// 1. LIVE VOICE OVERLAY
 const LiveVoiceOverlay = ({ onClose }: { onClose: () => void }) => {
     const [status, setStatus] = useState('Kapcsolódás...');
     const [isTalking, setIsTalking] = useState(false);
@@ -108,7 +108,6 @@ const LiveVoiceOverlay = ({ onClose }: { onClose: () => void }) => {
     const audioContextRef = useRef<AudioContext | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);
-    const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const nextStartTimeRef = useRef<number>(0);
     const sessionRef = useRef<any>(null);
 
@@ -161,7 +160,6 @@ const LiveVoiceOverlay = ({ onClose }: { onClose: () => void }) => {
                             processor.connect(ctx.destination);
                             
                             processorRef.current = processor;
-                            // sourceRef.current = source; // Type mismatch usually, simplified for demo
                         },
                         onmessage: async (msg: LiveServerMessage) => {
                             if (!mounted) return;
@@ -171,12 +169,6 @@ const LiveVoiceOverlay = ({ onClose }: { onClose: () => void }) => {
                                 const ctx = audioContextRef.current!;
                                 const audioBytes = base64ToUint8Array(audioData);
                                 
-                                // Simple decode logic for PCM from model if headerless, usually model sends PCM 24k
-                                // For simplicity using decodeAudioData which expects headers usually, 
-                                // BUT gemini sends raw PCM. We need to construct buffer manually.
-                                
-                                const float32 = new Float32Array(audioBytes.buffer); // Assuming standard conversion, or manual:
-                                // Manual decode for 24kHz PCM 16-bit little endian
                                 const int16 = new Int16Array(audioBytes.buffer);
                                 const audioBuffer = ctx.createBuffer(1, int16.length, 24000);
                                 const channelData = audioBuffer.getChannelData(0);
@@ -243,7 +235,7 @@ const LiveVoiceOverlay = ({ onClose }: { onClose: () => void }) => {
     );
 };
 
-// 2. RECEIPT SCANNER MODAL (New Feature)
+// 2. RECEIPT SCANNER MODAL
 const ReceiptScannerModal = ({ onClose, onScanComplete }: { onClose: () => void, onScanComplete: (amount: number, type: string) => void }) => {
     const [image, setImage] = useState<string | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -329,7 +321,6 @@ const MorningBriefing = () => {
     
     useEffect(() => {
         const fetchBriefing = async () => {
-            // Using Flash Lite for fast response
             const ai = new GoogleGenAI({ apiKey: API_KEY });
             const prompt = `
                 Dátum: ${new Date().toLocaleDateString('hu-HU')}.
@@ -363,6 +354,7 @@ const MorningBriefing = () => {
 
 // --- MODIFIED VIEWS ---
 
+// ASSISTANT VIEW
 const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([
         { id: '1', role: 'model', text: 'Szia! Miben segíthetek ma a vállalkozásod körül?' }
@@ -402,7 +394,6 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
             const result = await chatRef.current.sendMessage({ message: userMsg.text });
             const responseText = result.text || '';
             
-            // Check for grounding
             const grounding = result.candidates?.[0]?.groundingMetadata?.groundingChunks;
             let finalText = responseText;
             if (grounding && grounding.length > 0) {
@@ -421,7 +412,10 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
         <div className="view-container assistant-view">
             <header className="view-header">
                 <h2>Asszisztens</h2>
-                <div className="header-actions">
+                <div className="header-actions" style={{display:'flex', gap:'8px'}}>
+                     <a href="https://www.google.com" target="_blank" rel="noopener noreferrer" className="icon-btn" title="Keresés">
+                        <Icon name="search" />
+                     </a>
                      <button className="icon-btn" onClick={onStartLive} title="Live Hangvezérlés">
                         <Icon name="graphic_eq" style={{color: 'var(--primary)'}} />
                      </button>
@@ -434,7 +428,9 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
                 {messages.map(msg => (
                     <div key={msg.id} className={`message ${msg.role}`}>
                         <div className="bubble">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                                div: ({node, ...props}) => <div className="md-content" {...props} />
+                            }}>{msg.text}</ReactMarkdown>
                         </div>
                     </div>
                 ))}
@@ -464,6 +460,7 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
     );
 };
 
+// FINANCE VIEW
 const FinanceView = () => {
     const [finance, setFinance] = useState<FinanceState>(INITIAL_FINANCE);
     const [showScanner, setShowScanner] = useState(false);
@@ -476,7 +473,7 @@ const FinanceView = () => {
         setShowScanner(false);
         setFinance(prev => ({
             ...prev,
-            pettyCash: prev.pettyCash - amount, // Assume expense
+            pettyCash: prev.pettyCash - amount, 
             lastUpdated: new Date().toISOString()
         }));
         alert(`Sikeres rögzítés: ${fmt(amount)} (${category})`);
@@ -492,7 +489,7 @@ const FinanceView = () => {
                  contents: `A vállalkozás állapota: Házi pénztár: ${finance.pettyCash}, Bank: ${finance.bankBalance}, Adók: ${finance.expectedTaxes}. Adj egy stratégiai pénzügyi tanácsot. Használd a thinking módot alapos elemzéshez.`,
                  config: { thinkingConfig: { thinkingBudget: 2048 } }
              });
-             setAdvisorTip(response.text);
+             setAdvisorTip(response.text || "Nincs adat.");
         } catch(e) {
             setAdvisorTip("Jelenleg nem elérhető a tanácsadó.");
         } finally {
@@ -577,9 +574,15 @@ const FinanceView = () => {
     );
 };
 
+// NOTES VIEW with Transcribe & TTS
 const NotesView = () => {
     const [notes, setNotes] = useState<NoteItem[]>(INITIAL_LOANS);
     const [filter, setFilter] = useState<'all' | 'loan'>('all');
+    const [isRecording, setIsRecording] = useState(false);
+    
+    // Audio Rec Refs
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
 
     const addLoan = () => {
         const newLoan: NoteItem = {
@@ -599,12 +602,115 @@ const NotesView = () => {
         setNotes([newLoan, ...notes]);
     };
 
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) audioChunksRef.current.push(event.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                setIsRecording(false);
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // or webm
+                // Convert blob to base64
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = async () => {
+                    const base64String = (reader.result as string).split(',')[1];
+                    // Send to Gemini
+                    await transcribeAudio(base64String);
+                };
+                stream.getTracks().forEach(t => t.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+        } catch (err) {
+            console.error(err);
+            alert("Nem sikerült elérni a mikrofont.");
+        }
+    };
+
+    const stopRecording = () => {
+        mediaRecorderRef.current?.stop();
+    };
+
+    const transcribeAudio = async (base64Audio: string) => {
+        try {
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const result = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: {
+                    parts: [
+                        { inlineData: { mimeType: 'audio/wav', data: base64Audio } }, // Adjust mime if needed usually webm or wav
+                        { text: "Írd le pontosan, hogy mi hangzott el ebben a hangfelvételben magyarul. Csak a szöveget add vissza." }
+                    ]
+                }
+            });
+            
+            const newNote: NoteItem = {
+                id: generateId(),
+                type: 'voice',
+                title: 'Hangjegyzet',
+                content: result.text || 'Nem sikerült az átirat.',
+                timestamp: new Date().toISOString()
+            };
+            setNotes([newNote, ...notes]);
+        } catch (e) {
+            alert("Hiba történt az átírás során.");
+        }
+    };
+
+    const playTTS = async (text: string) => {
+        try {
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-preview-tts',
+                contents: { parts: [{ text: text }] },
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+                }
+            });
+            
+            const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (audioData) {
+                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const bytes = base64ToUint8Array(audioData);
+                // Decode assuming raw PCM? Or WAV? TTS usually sends WAV/MP3 wrapped or Raw.
+                // The prompt example implies raw PCM but standard API often returns base64 encoded audio container.
+                // However, for 2.5 TTS preview, let's try assuming it's raw PCM 24k like Live API or use decodeAudioData if it has headers.
+                // Actually the TTS model usually returns raw PCM.
+                
+                // Let's try the Live API decode logic for 24k
+                const int16 = new Int16Array(bytes.buffer);
+                const audioBuffer = ctx.createBuffer(1, int16.length, 24000);
+                const channelData = audioBuffer.getChannelData(0);
+                for(let i=0; i<int16.length; i++) {
+                    channelData[i] = int16[i] / 32768.0;
+                }
+                
+                const source = ctx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(ctx.destination);
+                source.start();
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Nem sikerült felolvasni.");
+        }
+    };
+
     const fmt = (n: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(n);
 
     return (
         <div className="view-container notes-view">
             <header className="view-header">
-                <h2>Jegyzetek & Tartozások</h2>
+                <h2>Jegyzetek</h2>
                 <div className="filter-tabs">
                     <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Minden</button>
                     <button className={filter === 'loan' ? 'active' : ''} onClick={() => setFilter('loan')}>Pénzügy</button>
@@ -638,11 +744,17 @@ const NotesView = () => {
                                         </span>
                                     </div>
                                 </div>
-                                <button className="btn-update-loan">Módosítás</button>
                             </div>
                         ) : (
                             <div className="text-note">
-                                <h3>{note.title}</h3>
+                                <div className="note-header-row" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                    <h3>{note.title}</h3>
+                                    {note.content && (
+                                        <button className="icon-btn-small" onClick={() => playTTS(note.content!)}>
+                                            <Icon name="volume_up" />
+                                        </button>
+                                    )}
+                                </div>
                                 <p>{note.content}</p>
                             </div>
                         )}
@@ -650,14 +762,184 @@ const NotesView = () => {
                 ))}
             </div>
 
-            <div className="floating-actions">
-                <button className="fab secondary" title="Hangjegyzet"><Icon name="mic" /></button>
-                <button className="fab primary" onClick={addLoan} title="Új kölcsön"><Icon name="attach_money" /></button>
+            {isRecording ? (
+                <div className="recording-overlay">
+                    <div className="pulsing-mic">
+                        <Icon name="mic" style={{fontSize: '40px', color: 'white'}}/>
+                    </div>
+                    <span>Felvétel folyamatban...</span>
+                    <button className="btn-stop-rec" onClick={stopRecording}>Állj</button>
+                </div>
+            ) : (
+                <div className="floating-actions">
+                    <button className="fab secondary" title="Hangjegyzet" onClick={startRecording}><Icon name="mic" /></button>
+                    <button className="fab primary" onClick={addLoan} title="Új kölcsön"><Icon name="attach_money" /></button>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// NEW CREATIVE VIEW
+const CreativeView = () => {
+    const [tab, setTab] = useState<'image' | 'video' | 'edit'>('image');
+    const [prompt, setPrompt] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [resultUrl, setResultUrl] = useState<string | null>(null);
+    const [resultType, setResultType] = useState<'image' | 'video' | null>(null);
+    
+    // Configs
+    const [imgSize, setImgSize] = useState('1K');
+    const [videoRatio, setVideoRatio] = useState('16:9');
+    const [editBaseImg, setEditBaseImg] = useState<string | null>(null);
+
+    const handleGenerate = async () => {
+        if (!prompt) return;
+        setIsGenerating(true);
+        setResultUrl(null);
+        setResultType(null);
+
+        try {
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            
+            if (tab === 'image') {
+                const response = await ai.models.generateContent({
+                    model: 'gemini-3-pro-image-preview',
+                    contents: { parts: [{ text: prompt }] },
+                    config: { imageConfig: { imageSize: imgSize as any, aspectRatio: '1:1' } }
+                });
+                // Assuming result structure for image models or wait for standard response
+                // The library usually returns images in the parts
+                const imgPart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+                if (imgPart && imgPart.inlineData) {
+                    setResultUrl(`data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`);
+                    setResultType('image');
+                }
+            } else if (tab === 'video') {
+                let op = await ai.models.generateVideos({
+                    model: 'veo-3.1-fast-generate-preview',
+                    prompt: prompt,
+                    config: {
+                        numberOfVideos: 1,
+                        aspectRatio: videoRatio as any,
+                        resolution: '720p' // default for fast preview usually
+                    }
+                });
+                
+                // Polling
+                while (!op.done) {
+                    await new Promise(r => setTimeout(r, 5000));
+                    op = await ai.operations.getVideosOperation({ operation: op });
+                }
+                
+                const vidUri = op.response?.generatedVideos?.[0]?.video?.uri;
+                if (vidUri) {
+                    // Fetch with API key
+                    const vidRes = await fetch(`${vidUri}&key=${API_KEY}`);
+                    const blob = await vidRes.blob();
+                    setResultUrl(URL.createObjectURL(blob));
+                    setResultType('video');
+                }
+            } else if (tab === 'edit') {
+                if (!editBaseImg) { alert("Tölts fel egy alap képet!"); return; }
+                const base64Data = editBaseImg.split(',')[1];
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash-image',
+                    contents: {
+                        parts: [
+                            { inlineData: { mimeType: 'image/jpeg', data: base64Data } },
+                            { text: prompt }
+                        ]
+                    }
+                });
+                const imgPart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+                if (imgPart && imgPart.inlineData) {
+                    setResultUrl(`data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`);
+                    setResultType('image');
+                }
+            }
+
+        } catch (e) {
+            console.error(e);
+            alert("Hiba történt a generálás során.");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const handleEditUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) {
+            const r = new FileReader();
+            r.onload = (ev) => setEditBaseImg(ev.target?.result as string);
+            r.readAsDataURL(e.target.files[0]);
+        }
+    };
+
+    return (
+        <div className="view-container creative-view">
+             <header className="view-header">
+                <h2>Stúdió</h2>
+            </header>
+
+            <div className="creative-tabs glass-panel">
+                <button className={tab === 'image' ? 'active' : ''} onClick={() => setTab('image')}><Icon name="image"/> Kép</button>
+                <button className={tab === 'video' ? 'active' : ''} onClick={() => setTab('video')}><Icon name="movie"/> Videó</button>
+                <button className={tab === 'edit' ? 'active' : ''} onClick={() => setTab('edit')}><Icon name="auto_fix"/> Szerk.</button>
+            </div>
+
+            <div className="creative-workspace custom-scrollbar">
+                <div className="input-section glass-panel">
+                    {tab === 'edit' && (
+                        <div className="upload-mini" onClick={() => document.getElementById('edit-up')?.click()}>
+                            {editBaseImg ? <img src={editBaseImg} alt="base" /> : <div className="placeholder"><Icon name="add_photo_alternate"/> Alapkép</div>}
+                            <input id="edit-up" type="file" hidden accept="image/*" onChange={handleEditUpload}/>
+                        </div>
+                    )}
+
+                    <textarea 
+                        placeholder={tab === 'image' ? "Pl: Futurisztikus iroda Budapest felett..." : tab === 'video' ? "Pl: Egy macska vezet egy autót..." : "Pl: Adj hozzá napszemüveget..."}
+                        value={prompt}
+                        onChange={e => setPrompt(e.target.value)}
+                    />
+                    
+                    <div className="controls-row">
+                        {tab === 'image' && (
+                            <select value={imgSize} onChange={e => setImgSize(e.target.value)}>
+                                <option value="1K">1K</option>
+                                <option value="2K">2K</option>
+                                <option value="4K">4K</option>
+                            </select>
+                        )}
+                        {tab === 'video' && (
+                            <select value={videoRatio} onChange={e => setVideoRatio(e.target.value)}>
+                                <option value="16:9">16:9 (Fekvő)</option>
+                                <option value="9:16">9:16 (Álló)</option>
+                            </select>
+                        )}
+                        <button className="generate-btn" onClick={handleGenerate} disabled={isGenerating || !prompt}>
+                            {isGenerating ? <Icon name="sync" className="spin"/> : <Icon name="auto_awesome"/>}
+                            Generálás
+                        </button>
+                    </div>
+                </div>
+
+                <div className="result-area">
+                    {resultUrl ? (
+                        resultType === 'image' ? <img src={resultUrl} alt="Result" className="result-media"/> : 
+                        <video src={resultUrl} controls autoPlay loop className="result-media"/>
+                    ) : (
+                        <div className="empty-state">
+                            <Icon name="palette" style={{fontSize: '48px', opacity: 0.3}}/>
+                            <p>Az alkotás itt jelenik meg</p>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
 };
 
+// PLANNER VIEW (Unchanged mostly)
 const PlannerView = () => {
     const today = new Date();
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -756,6 +1038,7 @@ const App = () => {
             <div className="content-area">
                 {activeTab === 'assistant' && <AssistantView onStartLive={() => setShowLive(true)} />}
                 {activeTab === 'finance' && <FinanceView />}
+                {activeTab === 'creative' && <CreativeView />}
                 {activeTab === 'notes' && <NotesView />}
                 {activeTab === 'planner' && <PlannerView />}
             </div>
@@ -771,6 +1054,10 @@ const App = () => {
                     <Icon name="account_balance_wallet" />
                     <span>Pénzügy</span>
                 </button>
+                 <button className={`nav-item ${activeTab === 'creative' ? 'active' : ''}`} onClick={() => setActiveTab('creative')}>
+                    <Icon name="palette" />
+                    <span>Stúdió</span>
+                </button>
                 <button className={`nav-item ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>
                     <Icon name="edit_note" />
                     <span>Jegyzet</span>
@@ -779,10 +1066,6 @@ const App = () => {
                     <Icon name="calendar_month" />
                     <span>Naptár</span>
                 </button>
-                <a href="https://www.google.com" target="_blank" rel="noopener noreferrer" className="nav-item link-item">
-                    <Icon name="search" />
-                    <span>Keresés</span>
-                </a>
             </nav>
         </div>
     );
