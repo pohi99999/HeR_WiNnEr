@@ -17,6 +17,7 @@ interface ChatMessage {
     id: string;
     role: 'user' | 'model';
     text: string;
+    image?: string; // Base64 image for display
 }
 
 interface FinanceState {
@@ -33,6 +34,14 @@ interface NoteItem {
     content?: string;
     loanData?: any;
     timestamp: string;
+}
+
+interface EmailItem {
+    id: string;
+    sender: string;
+    subject: string;
+    time: string;
+    body: string;
 }
 
 // --- MOCK DATA ---
@@ -70,6 +79,11 @@ const MOCK_EVENTS = [
     { id: 'e1', title: 'Könyvelői egyeztetés', date: new Date().toISOString().split('T')[0], time: '10:00', type: 'work' },
     { id: 'e2', title: 'NAV Határidő', date: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0], type: 'work' },
     { id: 'e3', title: 'Bevásárlás', date: new Date().toISOString().split('T')[0], time: '17:00', type: 'personal' }
+];
+
+const MOCK_EMAILS: EmailItem[] = [
+    { id: 'em1', sender: 'Könyvelő Iroda', subject: 'Havi áfa bevallás tervezete', time: '10:30', body: 'Kedves Ügyfelünk! Mellékelten küldöm a havi ÁFA bevallás tervezetét ellenőrzésre. Kérjük péntekig jelezzen vissza. Üdvözlettel: Könyvelő' },
+    { id: 'em2', sender: 'Google Payments', subject: 'Sikeres fizetés', time: 'Tegnap', body: 'A Google Cloud szolgáltatás megújult. Levont összeg: 12.000 Ft.' }
 ];
 
 // --- UTILS ---
@@ -352,6 +366,101 @@ const MorningBriefing = () => {
     );
 };
 
+// 4. INCOME MODAL
+const IncomeModal = ({ onClose, onSave }: { onClose: () => void, onSave: (amount: number, desc: string) => void }) => {
+    const [amount, setAmount] = useState('');
+    const [desc, setDesc] = useState('');
+
+    const handleSubmit = () => {
+        if (!amount) return;
+        onSave(parseInt(amount), desc || 'Egyéb bevétel');
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+                <h3>Bevétel Rögzítése</h3>
+                <input 
+                    type="number" 
+                    placeholder="Összeg (Ft)" 
+                    value={amount} 
+                    onChange={e => setAmount(e.target.value)} 
+                    className="modal-input"
+                />
+                <input 
+                    type="text" 
+                    placeholder="Megnevezés (pl. Készpénz eladás)" 
+                    value={desc} 
+                    onChange={e => setDesc(e.target.value)} 
+                    className="modal-input"
+                />
+                <div className="action-row">
+                    <button className="btn-action secondary" onClick={onClose}>Mégse</button>
+                    <button className="btn-action primary" onClick={handleSubmit}>Mentés</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// 5. EMAIL DETAIL MODAL
+const EmailDetailModal = ({ email, onClose }: { email: EmailItem, onClose: () => void }) => {
+    const [aiReply, setAiReply] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    const generateReply = async () => {
+        setIsGenerating(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: API_KEY });
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: `Írj egy udvarias, professzionális válaszlevelet erre az emailre:
+                Feladó: ${email.sender}
+                Tárgy: ${email.subject}
+                Üzenet: ${email.body}
+                A válasz legyen rövid, lényegretörő és magyar nyelvű.`
+            });
+            setAiReply(response.text || 'Nem sikerült generálni.');
+        } catch (e) {
+            setAiReply('Hiba történt a generálás során.');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content glass-panel" style={{maxWidth: '90%'}}>
+                <div className="email-header-modal">
+                    <h3>{email.subject}</h3>
+                    <div className="email-meta">
+                        <span>{email.sender}</span>
+                        <span>{email.time}</span>
+                    </div>
+                </div>
+                <div className="email-body-modal custom-scrollbar">
+                    {email.body}
+                </div>
+                
+                {aiReply && (
+                    <div className="ai-reply-box custom-scrollbar">
+                        <strong>AI Tervezet:</strong>
+                        <p>{aiReply}</p>
+                        <button className="copy-btn" onClick={() => navigator.clipboard.writeText(aiReply)}>Másolás</button>
+                    </div>
+                )}
+
+                <div className="action-row">
+                     <button className="btn-action secondary" onClick={onClose}>Bezárás</button>
+                     <button className="btn-action primary" onClick={generateReply} disabled={isGenerating}>
+                        {isGenerating ? 'Írás...' : <><Icon name="auto_awesome" /> Válasz Tervezet</>}
+                     </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- MODIFIED VIEWS ---
 
 // ASSISTANT VIEW
@@ -360,6 +469,7 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
         { id: '1', role: 'model', text: 'Szia! Miben segíthetek ma a vállalkozásod körül?' }
     ]);
     const [input, setInput] = useState('');
+    const [chatImage, setChatImage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatRef = useRef<any>(null);
@@ -373,35 +483,61 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
         chatRef.current = ai.chats.create({
             model: 'gemini-3-pro-preview',
             config: {
-                systemInstruction: "Te vagy a HeR WiNnEr alkalmazás asszisztense. A felhasználó egy vállalkozó. Segíts neki üzleti, pénzügyi és szervezési kérdésekben. Használd a googleSearch eszközt ha aktuális infó kell.",
-                thinkingConfig: { thinkingBudget: 1024 },
-                tools: [{ googleSearch: {} }]
+                systemInstruction: "Te vagy a HeR WiNnEr alkalmazás asszisztense. A felhasználó egy vállalkozó. Segíts neki üzleti, pénzügyi és szervezési kérdésekben. Használd a googleSearch és googleMaps eszközöket ha aktuális infó kell.",
+                thinkingConfig: { thinkingBudget: 32768 },
+                tools: [{ googleSearch: {} }, { googleMaps: {} }]
             }
         });
     }, []);
 
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) {
+            const r = new FileReader();
+            r.onload = (ev) => setChatImage(ev.target?.result as string);
+            r.readAsDataURL(e.target.files[0]);
+        }
+    };
+
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || isLoading) return;
+        if ((!input.trim() && !chatImage) || isLoading) return;
 
-        const userMsg: ChatMessage = { id: generateId(), role: 'user', text: input };
+        const userMsg: ChatMessage = { id: generateId(), role: 'user', text: input, image: chatImage || undefined };
         setMessages(p => [...p, userMsg]);
         setInput('');
+        setChatImage(null);
         setIsLoading(true);
 
         try {
             if (!chatRef.current) throw new Error("AI not ready");
-            const result = await chatRef.current.sendMessage({ message: userMsg.text });
-            const responseText = result.text || '';
             
+            let messagePayload: any = { role: 'user', parts: [] };
+            if (userMsg.image) {
+                const base64 = userMsg.image.split(',')[1];
+                messagePayload.parts.push({ inlineData: { mimeType: 'image/jpeg', data: base64 } });
+            }
+            if (userMsg.text) {
+                messagePayload.parts.push({ text: userMsg.text });
+            }
+
+            // Using sendMessage with complex payload
+            const result = await chatRef.current.sendMessage(messagePayload.parts.length === 1 && messagePayload.parts[0].text ? messagePayload.parts[0].text : messagePayload.parts);
+            
+            const responseText = result.text || '';
             const grounding = result.candidates?.[0]?.groundingMetadata?.groundingChunks;
             let finalText = responseText;
+            
             if (grounding && grounding.length > 0) {
-                 finalText += "\n\n**Források:**\n" + grounding.map((g: any) => `- [${g.web?.title || 'Link'}](${g.web?.uri})`).join('\n');
+                 finalText += "\n\n**Források:**\n" + grounding.map((g: any) => {
+                     if (g.web) return `- [${g.web.title || 'Weboldal'}](${g.web.uri})`;
+                     if (g.maps) return `- [${g.maps.title || 'Térkép'}](${g.maps.googleMapsUri})`;
+                     return '';
+                 }).filter(Boolean).join('\n');
             }
 
             setMessages(p => [...p, { id: generateId(), role: 'model', text: finalText }]);
         } catch (err) {
+            console.error(err);
             setMessages(p => [...p, { id: generateId(), role: 'model', text: 'Hiba történt a kapcsolatban.' }]);
         } finally {
             setIsLoading(false);
@@ -428,6 +564,7 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
                 {messages.map(msg => (
                     <div key={msg.id} className={`message ${msg.role}`}>
                         <div className="bubble">
+                            {msg.image && <img src={msg.image} alt="User Upload" className="chat-img-display" />}
                             <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                                 div: ({node, ...props}) => <div className="md-content" {...props} />
                             }}>{msg.text}</ReactMarkdown>
@@ -445,6 +582,16 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
             </div>
 
             <form className="chat-input-bar" onSubmit={handleSend}>
+                {chatImage && (
+                    <div className="chat-img-preview">
+                        <img src={chatImage} alt="Preview" />
+                        <button type="button" onClick={() => setChatImage(null)}><Icon name="close" /></button>
+                    </div>
+                )}
+                <label className="attach-btn">
+                    <Icon name="attach_file" />
+                    <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+                </label>
                 <input 
                     type="text" 
                     value={input} 
@@ -452,7 +599,7 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
                     placeholder="Írj üzenetet..." 
                     disabled={isLoading}
                 />
-                <button type="submit" disabled={isLoading || !input.trim()}>
+                <button type="submit" disabled={isLoading || (!input.trim() && !chatImage)}>
                     <Icon name="send" />
                 </button>
             </form>
@@ -464,6 +611,7 @@ const AssistantView = ({ onStartLive }: { onStartLive: () => void }) => {
 const FinanceView = () => {
     const [finance, setFinance] = useState<FinanceState>(INITIAL_FINANCE);
     const [showScanner, setShowScanner] = useState(false);
+    const [showIncome, setShowIncome] = useState(false);
     const [advisorTip, setAdvisorTip] = useState<string | null>(null);
     const [isThinking, setIsThinking] = useState(false);
 
@@ -477,6 +625,15 @@ const FinanceView = () => {
             lastUpdated: new Date().toISOString()
         }));
         alert(`Sikeres rögzítés: ${fmt(amount)} (${category})`);
+    };
+
+    const handleIncomeSave = (amount: number, desc: string) => {
+        setFinance(prev => ({
+            ...prev,
+            pettyCash: prev.pettyCash + amount,
+            lastUpdated: new Date().toISOString()
+        }));
+        setShowIncome(false);
     };
 
     const getAdvice = async () => {
@@ -565,11 +722,12 @@ const FinanceView = () => {
             </div>
             
             <div className="finance-actions">
-                <button className="btn-action primary" onClick={() => alert("Bevétel funkció hamarosan...")}><Icon name="add" /> Bevétel</button>
+                <button className="btn-action primary" onClick={() => setShowIncome(true)}><Icon name="add" /> Bevétel</button>
                 <button className="btn-action secondary" onClick={() => setShowScanner(true)}><Icon name="receipt_long" /> Számla Elemzése</button>
             </div>
 
             {showScanner && <ReceiptScannerModal onClose={() => setShowScanner(false)} onScanComplete={handleScanComplete} />}
+            {showIncome && <IncomeModal onClose={() => setShowIncome(false)} onSave={handleIncomeSave} />}
         </div>
     );
 };
@@ -681,12 +839,6 @@ const NotesView = () => {
             if (audioData) {
                 const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
                 const bytes = base64ToUint8Array(audioData);
-                // Decode assuming raw PCM? Or WAV? TTS usually sends WAV/MP3 wrapped or Raw.
-                // The prompt example implies raw PCM but standard API often returns base64 encoded audio container.
-                // However, for 2.5 TTS preview, let's try assuming it's raw PCM 24k like Live API or use decodeAudioData if it has headers.
-                // Actually the TTS model usually returns raw PCM.
-                
-                // Let's try the Live API decode logic for 24k
                 const int16 = new Int16Array(bytes.buffer);
                 const audioBuffer = ctx.createBuffer(1, int16.length, 24000);
                 const channelData = audioBuffer.getChannelData(0);
@@ -780,7 +932,7 @@ const NotesView = () => {
     );
 };
 
-// NEW CREATIVE VIEW
+// CREATIVE VIEW
 const CreativeView = () => {
     const [tab, setTab] = useState<'image' | 'video' | 'edit'>('image');
     const [prompt, setPrompt] = useState('');
@@ -808,8 +960,6 @@ const CreativeView = () => {
                     contents: { parts: [{ text: prompt }] },
                     config: { imageConfig: { imageSize: imgSize as any, aspectRatio: '1:1' } }
                 });
-                // Assuming result structure for image models or wait for standard response
-                // The library usually returns images in the parts
                 const imgPart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
                 if (imgPart && imgPart.inlineData) {
                     setResultUrl(`data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`);
@@ -822,11 +972,10 @@ const CreativeView = () => {
                     config: {
                         numberOfVideos: 1,
                         aspectRatio: videoRatio as any,
-                        resolution: '720p' // default for fast preview usually
+                        resolution: '720p'
                     }
                 });
                 
-                // Polling
                 while (!op.done) {
                     await new Promise(r => setTimeout(r, 5000));
                     op = await ai.operations.getVideosOperation({ operation: op });
@@ -834,7 +983,6 @@ const CreativeView = () => {
                 
                 const vidUri = op.response?.generatedVideos?.[0]?.video?.uri;
                 if (vidUri) {
-                    // Fetch with API key
                     const vidRes = await fetch(`${vidUri}&key=${API_KEY}`);
                     const blob = await vidRes.blob();
                     setResultUrl(URL.createObjectURL(blob));
@@ -939,11 +1087,12 @@ const CreativeView = () => {
     );
 };
 
-// PLANNER VIEW (Unchanged mostly)
+// PLANNER VIEW
 const PlannerView = () => {
     const today = new Date();
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const [selectedEmail, setSelectedEmail] = useState<EmailItem | null>(null);
 
     return (
         <div className="view-container planner-view">
@@ -983,18 +1132,19 @@ const PlannerView = () => {
                     Beérkezett Levelek (Gmail)
                 </div>
                 <div className="email-preview glass-panel">
-                    <div className="email-row">
-                        <div className="sender">Könyvelő Iroda</div>
-                        <div className="subject">Havi áfa bevallás tervezete</div>
-                        <div className="date">10:30</div>
-                    </div>
-                    <div className="email-row">
-                        <div className="sender">Google Payments</div>
-                        <div className="subject">Sikeres fizetés</div>
-                        <div className="date">Tegnap</div>
-                    </div>
+                    {MOCK_EMAILS.map(email => (
+                         <div key={email.id} className="email-row clickable" onClick={() => setSelectedEmail(email)}>
+                            <div className="sender">{email.sender}</div>
+                            <div className="subject">{email.subject}</div>
+                            <div className="date">{email.time}</div>
+                        </div>
+                    ))}
                 </div>
             </div>
+            
+            {selectedEmail && (
+                <EmailDetailModal email={selectedEmail} onClose={() => setSelectedEmail(null)} />
+            )}
         </div>
     );
 };
