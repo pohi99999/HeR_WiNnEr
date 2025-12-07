@@ -736,6 +736,7 @@ const FinanceView = () => {
 const NotesView = () => {
     const [notes, setNotes] = useState<NoteItem[]>(INITIAL_LOANS);
     const [filter, setFilter] = useState<'all' | 'loan'>('all');
+    const [sortBy, setSortBy] = useState<'date' | 'title' | 'type'>('date');
     const [isRecording, setIsRecording] = useState(false);
     
     // Audio Rec Refs
@@ -859,6 +860,16 @@ const NotesView = () => {
 
     const fmt = (n: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(n);
 
+    // SORT LOGIC
+    const sortedNotes = notes
+        .filter(n => filter === 'all' || n.type === filter)
+        .sort((a, b) => {
+            if (sortBy === 'date') return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+            if (sortBy === 'title') return a.title.localeCompare(b.title);
+            if (sortBy === 'type') return a.type.localeCompare(b.type);
+            return 0;
+        });
+
     return (
         <div className="view-container notes-view">
             <header className="view-header">
@@ -868,9 +879,18 @@ const NotesView = () => {
                     <button className={filter === 'loan' ? 'active' : ''} onClick={() => setFilter('loan')}>Pénzügy</button>
                 </div>
             </header>
+            
+            <div className="sort-row">
+                <span className="sort-label"><Icon name="sort" style={{fontSize: '14px'}}/> Rendezés:</span>
+                <div className="sort-pills">
+                     <button className={`sort-pill ${sortBy === 'date' ? 'active' : ''}`} onClick={() => setSortBy('date')}>Dátum</button>
+                     <button className={`sort-pill ${sortBy === 'title' ? 'active' : ''}`} onClick={() => setSortBy('title')}>Cím</button>
+                     <button className={`sort-pill ${sortBy === 'type' ? 'active' : ''}`} onClick={() => setSortBy('type')}>Típus</button>
+                </div>
+            </div>
 
             <div className="notes-list custom-scrollbar">
-                {notes.filter(n => filter === 'all' || n.type === filter).map(note => (
+                {sortedNotes.map(note => (
                     <div key={note.id} className={`note-card ${note.type}`}>
                         {note.type === 'loan' && note.loanData ? (
                             <div className="loan-tracker">
