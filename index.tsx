@@ -738,6 +738,9 @@ const NotesView = () => {
     const [filter, setFilter] = useState<'all' | 'loan'>('all');
     const [sortBy, setSortBy] = useState<'date' | 'title' | 'type'>('date');
     const [isRecording, setIsRecording] = useState(false);
+    const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+    const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
     
     // Audio Rec Refs
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -772,17 +775,12 @@ const NotesView = () => {
                 if (event.data.size > 0) audioChunksRef.current.push(event.data);
             };
 
-            mediaRecorder.onstop = async () => {
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                const url = URL.createObjectURL(audioBlob);
+                setRecordedBlob(audioBlob);
+                setAudioUrl(url);
                 setIsRecording(false);
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // or webm
-                // Convert blob to base64
-                const reader = new FileReader();
-                reader.readAsDataURL(audioBlob);
-                reader.onloadend = async () => {
-                    const base64String = (reader.result as string).split(',')[1];
-                    // Send to Gemini
-                    await transcribeAudio(base64String);
-                };
                 stream.getTracks().forEach(t => t.stop());
             };
 
@@ -798,6 +796,25 @@ const NotesView = () => {
         mediaRecorderRef.current?.stop();
     };
 
+    const handleDiscard = () => {
+        setRecordedBlob(null);
+        setAudioUrl(null);
+        setIsRecording(false);
+    };
+
+    const handleSave = () => {
+        if (!recordedBlob) return;
+        setIsProcessing(true);
+        const reader = new FileReader();
+        reader.readAsDataURL(recordedBlob);
+        reader.onloadend = async () => {
+            const base64String = (reader.result as string).split(',')[1];
+            await transcribeAudio(base64String);
+            setIsProcessing(false);
+            handleDiscard();
+        };
+    };
+
     const transcribeAudio = async (base64Audio: string) => {
         try {
             const ai = new GoogleGenAI({ apiKey: API_KEY });
@@ -805,7 +822,7 @@ const NotesView = () => {
                 model: 'gemini-2.5-flash',
                 contents: {
                     parts: [
-                        { inlineData: { mimeType: 'audio/wav', data: base64Audio } }, // Adjust mime if needed usually webm or wav
+                        { inlineData: { mimeType: 'audio/webm', data: base64Audio } },
                         { text: "Írd le pontosan, hogy mi hangzott el ebben a hangfelvételben magyarul. Csak a szöveget add vissza." }
                     ]
                 }
@@ -952,15 +969,34 @@ const NotesView = () => {
                 ))}
             </div>
 
-            {isRecording ? (
+            {(isRecording || recordedBlob) && (
                 <div className="recording-overlay glass-panel">
-                    <div className="pulsing-mic-large">
-                        <Icon name="mic" style={{fontSize: '48px', color: 'white'}}/>
-                    </div>
-                    <span className="rec-text">Felvétel folyamatban...</span>
-                    <button className="btn-stop-rec" onClick={stopRecording}>Befejezés</button>
+                    {isRecording ? (
+                        <>
+                            <div className="pulsing-mic-large">
+                                <Icon name="mic" style={{fontSize: '48px', color: 'white'}}/>
+                            </div>
+                            <span className="rec-text">Felvétel folyamatban...</span>
+                            <button className="btn-stop-rec" onClick={stopRecording}>Befejezés</button>
+                        </>
+                    ) : recordedBlob ? (
+                        <div className="review-container">
+                             <h3>Felvétel áttekintése</h3>
+                             <audio src={audioUrl!} controls className="audio-preview" />
+                             <div className="review-actions">
+                                 <button className="btn-action secondary" onClick={handleDiscard} disabled={isProcessing}>
+                                     <Icon name="delete" /> Törlés
+                                 </button>
+                                 <button className="btn-action primary" onClick={handleSave} disabled={isProcessing}>
+                                     {isProcessing ? 'Mentés...' : <><Icon name="check" /> Mentés</>}
+                                 </button>
+                             </div>
+                        </div>
+                    ) : null}
                 </div>
-            ) : (
+            )}
+            
+            {!(isRecording || recordedBlob) && (
                 <div className="floating-actions">
                     <button className="fab secondary" title="Hangjegyzet" onClick={startRecording}>
                         <Icon name="mic" />
