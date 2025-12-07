@@ -76,9 +76,9 @@ const INITIAL_LOANS: NoteItem[] = [
 ];
 
 const MOCK_EVENTS = [
-    { id: 'e1', title: 'Könyvelői egyeztetés', date: new Date().toISOString().split('T')[0], time: '10:00', type: 'work' },
-    { id: 'e2', title: 'NAV Határidő', date: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0], type: 'work' },
-    { id: 'e3', title: 'Bevásárlás', date: new Date().toISOString().split('T')[0], time: '17:00', type: 'personal' }
+    { id: 'e1', title: 'Könyvelői egyeztetés', date: new Date().toISOString().split('T')[0], time: '10:00', type: 'work', status: 'in-progress' },
+    { id: 'e2', title: 'NAV Határidő', date: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0], type: 'work', status: 'todo' },
+    { id: 'e3', title: 'Bevásárlás', date: new Date().toISOString().split('T')[0], time: '17:00', type: 'personal', status: 'completed' }
 ];
 
 const MOCK_EMAILS: EmailItem[] = [
@@ -875,39 +875,57 @@ const NotesView = () => {
                         {note.type === 'loan' && note.loanData ? (
                             <div className="loan-tracker">
                                 <div className="loan-header">
-                                    <Icon name="handshake" />
-                                    <span className="person-name">{note.loanData.name}</span>
-                                    <span className="loan-date">{note.loanData.date}</span>
+                                    <div className="loan-avatar">{note.loanData.name.charAt(0)}</div>
+                                    <div className="loan-info-col">
+                                        <span className="person-name">{note.loanData.name}</span>
+                                        <span className="loan-date">{note.loanData.date}</span>
+                                    </div>
+                                    <div className={`loan-badge ${note.loanData.amount - note.loanData.returned <= 0 ? 'paid' : 'pending'}`}>
+                                        {note.loanData.amount - note.loanData.returned <= 0 ? 'Rendezve' : 'Aktív'}
+                                    </div>
                                 </div>
                                 <div className="loan-body">
-                                    <div className="loan-row">
-                                        <span>Adott:</span>
-                                        <span className="val-given">{fmt(note.loanData.amount)}</span>
+                                    <div className="loan-progress-track">
+                                        <div 
+                                            className="loan-progress-fill" 
+                                            style={{width: `${Math.min(100, (note.loanData.returned / note.loanData.amount) * 100)}%`}}
+                                        ></div>
                                     </div>
-                                    <div className="loan-row">
-                                        <span>Vissza:</span>
-                                        <span className="val-ret">{fmt(note.loanData.returned)}</span>
-                                    </div>
-                                    <div className="loan-divider"></div>
-                                    <div className="loan-row balance">
-                                        <span>Egyenleg:</span>
-                                        <span className={note.loanData.amount - note.loanData.returned > 0 ? 'negative' : 'positive'}>
-                                            {fmt(note.loanData.amount - note.loanData.returned)}
-                                        </span>
+                                    <div className="loan-stats-grid">
+                                        <div className="stat-item">
+                                            <span className="lbl">Adott</span>
+                                            <span className="val">{fmt(note.loanData.amount)}</span>
+                                        </div>
+                                        <div className="stat-item">
+                                            <span className="lbl">Vissza</span>
+                                            <span className="val success">{fmt(note.loanData.returned)}</span>
+                                        </div>
+                                        <div className="stat-item">
+                                            <span className="lbl">Egyenleg</span>
+                                            <span className={`val ${note.loanData.amount - note.loanData.returned > 0 ? 'negative' : ''}`}>
+                                                {fmt(note.loanData.amount - note.loanData.returned)}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         ) : (
                             <div className="text-note">
-                                <div className="note-header-row" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                    <h3>{note.title}</h3>
+                                <div className="note-header-row">
+                                    <div className="note-icon-circle">
+                                        <Icon name={note.type === 'voice' ? 'mic' : 'description'} />
+                                    </div>
+                                    <div className="note-title-col">
+                                        <h3>{note.title}</h3>
+                                        <span className="note-time">{new Date(note.timestamp).toLocaleTimeString('hu-HU', {hour:'2-digit', minute:'2-digit'})}</span>
+                                    </div>
                                     {note.content && (
                                         <button className="icon-btn-small" onClick={() => playTTS(note.content!)}>
                                             <Icon name="volume_up" />
                                         </button>
                                     )}
                                 </div>
-                                <p>{note.content}</p>
+                                <p className="note-content-text">{note.content}</p>
                             </div>
                         )}
                     </div>
@@ -915,17 +933,21 @@ const NotesView = () => {
             </div>
 
             {isRecording ? (
-                <div className="recording-overlay">
-                    <div className="pulsing-mic">
-                        <Icon name="mic" style={{fontSize: '40px', color: 'white'}}/>
+                <div className="recording-overlay glass-panel">
+                    <div className="pulsing-mic-large">
+                        <Icon name="mic" style={{fontSize: '48px', color: 'white'}}/>
                     </div>
-                    <span>Felvétel folyamatban...</span>
-                    <button className="btn-stop-rec" onClick={stopRecording}>Állj</button>
+                    <span className="rec-text">Felvétel folyamatban...</span>
+                    <button className="btn-stop-rec" onClick={stopRecording}>Befejezés</button>
                 </div>
             ) : (
                 <div className="floating-actions">
-                    <button className="fab secondary" title="Hangjegyzet" onClick={startRecording}><Icon name="mic" /></button>
-                    <button className="fab primary" onClick={addLoan} title="Új kölcsön"><Icon name="attach_money" /></button>
+                    <button className="fab secondary" title="Hangjegyzet" onClick={startRecording}>
+                        <Icon name="mic" />
+                    </button>
+                    <button className="fab primary" onClick={addLoan} title="Új kölcsön">
+                        <Icon name="attach_money" />
+                    </button>
                 </div>
             )}
         </div>
@@ -1116,13 +1138,18 @@ const PlannerView = () => {
 
             <div className="planner-content custom-scrollbar">
                 <div className="section-title">Mai Teendők</div>
-                {MOCK_EVENTS.map(ev => (
+                {MOCK_EVENTS.map((ev: any) => (
                     <div key={ev.id} className="event-card glass-panel">
                         <div className={`event-strip ${ev.type}`}></div>
                         <div className="event-time">{ev.time || 'Egész nap'}</div>
                         <div className="event-details">
-                            <h4>{ev.title}</h4>
-                            <span className="tag">{ev.type}</span>
+                            <h4 className={ev.status === 'completed' ? 'completed-task' : ''}>{ev.title}</h4>
+                            <div className="event-meta-row">
+                                <span className="tag">{ev.type}</span>
+                                <span className={`status-pill ${ev.status || 'todo'}`}>
+                                    {ev.status === 'completed' ? 'Kész' : ev.status === 'in-progress' ? 'Folyamatban' : 'Teendő'}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 ))}
