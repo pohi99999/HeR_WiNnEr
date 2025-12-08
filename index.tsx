@@ -34,6 +34,7 @@ interface NoteItem {
     content?: string;
     loanData?: any;
     timestamp: string;
+    category: string;
 }
 
 interface EmailItem {
@@ -43,6 +44,15 @@ interface EmailItem {
     time: string;
     body: string;
 }
+
+// --- CONSTANTS ---
+const NOTE_CATEGORIES = [
+    { id: 'work', label: 'Munka', color: '#06b6d4' },
+    { id: 'personal', label: 'Személyes', color: '#8b5cf6' },
+    { id: 'finance', label: 'Pénzügy', color: '#10b981' },
+    { id: 'idea', label: 'Ötlet', color: '#f59e0b' },
+    { id: 'other', label: 'Egyéb', color: '#94a3b8' }
+];
 
 // --- MOCK DATA ---
 const MOCK_USER: User = {
@@ -64,6 +74,7 @@ const INITIAL_LOANS: NoteItem[] = [
         type: 'loan',
         title: 'Kölcsön - Kovács János',
         timestamp: new Date().toISOString(),
+        category: 'finance',
         loanData: {
             id: 'l1',
             name: 'Kovács János',
@@ -461,6 +472,57 @@ const EmailDetailModal = ({ email, onClose }: { email: EmailItem, onClose: () =>
     );
 };
 
+// 6. CREATE NOTE MODAL
+const CreateNoteModal = ({ onClose, onSave }: { onClose: () => void, onSave: (title: string, content: string, category: string) => void }) => {
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
+    const [category, setCategory] = useState('other');
+
+    const handleSave = () => {
+        if (!title.trim()) return;
+        onSave(title, content, category);
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content glass-panel">
+                <h3>Új Jegyzet</h3>
+                <input 
+                    type="text" 
+                    className="modal-input" 
+                    placeholder="Cím"
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                />
+                <textarea 
+                    className="modal-input" 
+                    placeholder="Tartalom..."
+                    style={{minHeight: '100px', resize: 'none'}}
+                    value={content}
+                    onChange={e => setContent(e.target.value)}
+                />
+                <div className="category-select-label">Kategória:</div>
+                <div className="category-pills-row">
+                    {NOTE_CATEGORIES.map(cat => (
+                        <button 
+                            key={cat.id} 
+                            className={`cat-pill-select ${category === cat.id ? 'active' : ''}`}
+                            onClick={() => setCategory(cat.id)}
+                            style={{borderColor: category === cat.id ? cat.color : 'transparent', color: category === cat.id ? 'white' : 'var(--text-muted)'}}
+                        >
+                            {cat.label}
+                        </button>
+                    ))}
+                </div>
+                <div className="action-row" style={{marginTop: '20px'}}>
+                    <button className="btn-action secondary" onClick={onClose}>Mégse</button>
+                    <button className="btn-action primary" onClick={handleSave}>Mentés</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- MODIFIED VIEWS ---
 
 // ASSISTANT VIEW
@@ -736,11 +798,13 @@ const FinanceView = () => {
 const NotesView = () => {
     const [notes, setNotes] = useState<NoteItem[]>(INITIAL_LOANS);
     const [filter, setFilter] = useState<'all' | 'loan'>('all');
+    const [categoryFilter, setCategoryFilter] = useState<string>('all');
     const [sortBy, setSortBy] = useState<'date' | 'title' | 'type'>('date');
     const [isRecording, setIsRecording] = useState(false);
     const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [showCreateNote, setShowCreateNote] = useState(false);
     
     // Audio Rec Refs
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -752,6 +816,7 @@ const NotesView = () => {
             type: 'loan',
             title: 'Új kölcsön',
             timestamp: new Date().toISOString(),
+            category: 'finance',
             loanData: {
                 id: generateId(),
                 name: 'Új Adós',
@@ -762,6 +827,19 @@ const NotesView = () => {
             }
         };
         setNotes([newLoan, ...notes]);
+    };
+
+    const addTextNote = (title: string, content: string, category: string) => {
+        const newNote: NoteItem = {
+            id: generateId(),
+            type: 'text',
+            title,
+            content,
+            timestamp: new Date().toISOString(),
+            category
+        };
+        setNotes([newNote, ...notes]);
+        setShowCreateNote(false);
     };
 
     const startRecording = async () => {
@@ -833,7 +911,8 @@ const NotesView = () => {
                 type: 'voice',
                 title: 'Hangjegyzet',
                 content: result.text || 'Nem sikerült az átirat.',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                category: 'other' // Default to Other for voice notes
             };
             setNotes([newNote, ...notes]);
         } catch (e) {
@@ -877,15 +956,19 @@ const NotesView = () => {
 
     const fmt = (n: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(n);
 
-    // SORT LOGIC
+    // SORT & FILTER LOGIC
     const sortedNotes = notes
         .filter(n => filter === 'all' || n.type === filter)
+        .filter(n => categoryFilter === 'all' || n.category === categoryFilter)
         .sort((a, b) => {
             if (sortBy === 'date') return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
             if (sortBy === 'title') return a.title.localeCompare(b.title);
             if (sortBy === 'type') return a.type.localeCompare(b.type);
             return 0;
         });
+
+    const getCatColor = (id: string) => NOTE_CATEGORIES.find(c => c.id === id)?.color || 'var(--text-muted)';
+    const getCatLabel = (id: string) => NOTE_CATEGORIES.find(c => c.id === id)?.label || 'Egyéb';
 
     return (
         <div className="view-container notes-view">
@@ -897,6 +980,19 @@ const NotesView = () => {
                 </div>
             </header>
             
+            <div className="category-filter-bar hide-scrollbar">
+                {NOTE_CATEGORIES.map(cat => (
+                    <button 
+                        key={cat.id} 
+                        className={`cat-pill ${categoryFilter === cat.id ? 'active' : ''}`}
+                        onClick={() => setCategoryFilter(cat.id)}
+                        style={{borderColor: categoryFilter === cat.id ? cat.color : 'transparent', color: categoryFilter === cat.id ? 'white' : 'var(--text-muted)'}}
+                    >
+                        {cat.label}
+                    </button>
+                ))}
+            </div>
+
             <div className="sort-row">
                 <span className="sort-label"><Icon name="sort" style={{fontSize: '14px'}}/> Rendezés:</span>
                 <div className="sort-pills">
@@ -909,6 +1005,11 @@ const NotesView = () => {
             <div className="notes-list custom-scrollbar">
                 {sortedNotes.map(note => (
                     <div key={note.id} className={`note-card ${note.type}`}>
+                        {note.category && (
+                            <div className="category-chip" style={{backgroundColor: getCatColor(note.category) + '33', color: getCatColor(note.category), border: `1px solid ${getCatColor(note.category)}`}}>
+                                {getCatLabel(note.category)}
+                            </div>
+                        )}
                         {note.type === 'loan' && note.loanData ? (
                             <div className="loan-tracker">
                                 <div className="loan-header">
@@ -996,8 +1097,13 @@ const NotesView = () => {
                 </div>
             )}
             
+            {showCreateNote && <CreateNoteModal onClose={() => setShowCreateNote(false)} onSave={addTextNote} />}
+
             {!(isRecording || recordedBlob) && (
                 <div className="floating-actions">
+                    <button className="fab secondary" title="Új Jegyzet" onClick={() => setShowCreateNote(true)}>
+                        <Icon name="edit" />
+                    </button>
                     <button className="fab secondary" title="Hangjegyzet" onClick={startRecording}>
                         <Icon name="mic" />
                     </button>
