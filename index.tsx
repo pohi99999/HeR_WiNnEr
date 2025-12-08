@@ -811,6 +811,7 @@ const NotesView = () => {
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [showCreateNote, setShowCreateNote] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     
     // Audio Rec Refs
@@ -998,6 +999,11 @@ const NotesView = () => {
     const sortedNotes = notes
         .filter(n => filter === 'all' || n.type === filter || (filter === 'file' && n.type === 'file'))
         .filter(n => categoryFilter === 'all' || n.category === categoryFilter)
+        .filter(n => {
+            if (!searchQuery) return true;
+            const q = searchQuery.toLowerCase();
+            return n.title.toLowerCase().includes(q) || (n.content && n.content.toLowerCase().includes(q));
+        })
         .sort((a, b) => {
             if (sortBy === 'date') return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
             if (sortBy === 'title') return a.title.localeCompare(b.title);
@@ -1019,6 +1025,17 @@ const NotesView = () => {
                 </div>
             </header>
             
+            <div className="search-bar-container">
+                <Icon name="search" className="search-icon"/>
+                <input 
+                    type="text" 
+                    placeholder="Keresés..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="search-input"
+                />
+            </div>
+
             <div className="category-filter-bar hide-scrollbar">
                 {NOTE_CATEGORIES.map(cat => (
                     <button 
