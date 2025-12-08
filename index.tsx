@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
@@ -1362,8 +1363,15 @@ const PlannerView = () => {
         } else {
             // Week mode: show current week Mon-Sun
             const curr = new Date(selectedDate);
-            const first = curr.getDate() - curr.getDay() + 1; // First day is the day of the month - the day of the week
-            return Array.from({ length: 7 }, (_, i) => new Date(curr.setDate(first + i)));
+            const currentDay = curr.getDay();
+            const diff = currentDay === 0 ? -6 : 1 - currentDay; // Adjust when day is sunday
+            const monday = new Date(curr.setDate(curr.getDate() + diff));
+            
+            return Array.from({ length: 7 }, (_, i) => {
+                 const d = new Date(monday);
+                 d.setDate(monday.getDate() + i);
+                 return d;
+            });
         }
     };
     
