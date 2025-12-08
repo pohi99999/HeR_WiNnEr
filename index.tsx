@@ -29,10 +29,16 @@ interface FinanceState {
 
 interface NoteItem {
     id: string;
-    type: 'text' | 'voice' | 'loan';
+    type: 'text' | 'voice' | 'loan' | 'file';
     title: string;
     content?: string;
     loanData?: any;
+    fileData?: {
+        name: string;
+        size: number;
+        type: string;
+        url: string;
+    };
     timestamp: string;
     category: string;
 }
@@ -797,7 +803,7 @@ const FinanceView = () => {
 // NOTES VIEW with Transcribe & TTS
 const NotesView = () => {
     const [notes, setNotes] = useState<NoteItem[]>(INITIAL_LOANS);
-    const [filter, setFilter] = useState<'all' | 'loan'>('all');
+    const [filter, setFilter] = useState<'all' | 'loan' | 'file'>('all');
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
     const [sortBy, setSortBy] = useState<'date' | 'title' | 'type'>('date');
     const [isRecording, setIsRecording] = useState(false);
@@ -805,6 +811,7 @@ const NotesView = () => {
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [showCreateNote, setShowCreateNote] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     
     // Audio Rec Refs
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -840,6 +847,30 @@ const NotesView = () => {
         };
         setNotes([newNote, ...notes]);
         setShowCreateNote(false);
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const newFileNote: NoteItem = {
+                    id: generateId(),
+                    type: 'file',
+                    title: file.name,
+                    timestamp: new Date().toISOString(),
+                    category: 'other',
+                    fileData: {
+                        name: file.name,
+                        size: file.size,
+                        type: file.type,
+                        url: ev.target?.result as string
+                    }
+                };
+                setNotes([newFileNote, ...notes]);
+            };
+            reader.readAsDataURL(file);
+        }
     };
 
     const startRecording = async () => {
@@ -955,10 +986,17 @@ const NotesView = () => {
     };
 
     const fmt = (n: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(n);
+    const formatBytes = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
 
     // SORT & FILTER LOGIC
     const sortedNotes = notes
-        .filter(n => filter === 'all' || n.type === filter)
+        .filter(n => filter === 'all' || n.type === filter || (filter === 'file' && n.type === 'file'))
         .filter(n => categoryFilter === 'all' || n.category === categoryFilter)
         .sort((a, b) => {
             if (sortBy === 'date') return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
@@ -973,9 +1011,10 @@ const NotesView = () => {
     return (
         <div className="view-container notes-view">
             <header className="view-header">
-                <h2>Jegyzetek</h2>
+                <h2>Dokumentumok</h2>
                 <div className="filter-tabs">
                     <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Minden</button>
+                    <button className={filter === 'file' ? 'active' : ''} onClick={() => setFilter('file')}>Fájlok</button>
                     <button className={filter === 'loan' ? 'active' : ''} onClick={() => setFilter('loan')}>Pénzügy</button>
                 </div>
             </header>
@@ -1047,6 +1086,23 @@ const NotesView = () => {
                                     </div>
                                 </div>
                             </div>
+                        ) : note.type === 'file' && note.fileData ? (
+                            <div className="file-card">
+                                {note.fileData.type.startsWith('image/') ? (
+                                    <img src={note.fileData.url} alt="preview" className="file-preview-img" />
+                                ) : (
+                                    <div className="file-icon-placeholder">
+                                        <Icon name="description" style={{fontSize:'32px'}} />
+                                    </div>
+                                )}
+                                <div className="file-info-col">
+                                    <h3>{note.title}</h3>
+                                    <span className="note-time">{formatBytes(note.fileData.size)} • {new Date(note.timestamp).toLocaleDateString()}</span>
+                                </div>
+                                <a href={note.fileData.url} download={note.fileData.name} className="icon-btn-small">
+                                    <Icon name="download" />
+                                </a>
+                            </div>
                         ) : (
                             <div className="text-note">
                                 <div className="note-header-row">
@@ -1098,11 +1154,15 @@ const NotesView = () => {
             )}
             
             {showCreateNote && <CreateNoteModal onClose={() => setShowCreateNote(false)} onSave={addTextNote} />}
+            <input type="file" ref={fileInputRef} hidden onChange={handleFileUpload} />
 
             {!(isRecording || recordedBlob) && (
                 <div className="floating-actions">
                     <button className="fab secondary" title="Új Jegyzet" onClick={() => setShowCreateNote(true)}>
                         <Icon name="edit" />
+                    </button>
+                    <button className="fab secondary" title="Fájl feltöltés" onClick={() => fileInputRef.current?.click()}>
+                        <Icon name="upload_file" />
                     </button>
                     <button className="fab secondary" title="Hangjegyzet" onClick={startRecording}>
                         <Icon name="mic" />
@@ -1462,7 +1522,7 @@ const App = () => {
                 </button>
                 <button className={`nav-item ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>
                     <Icon name="edit_note" />
-                    <span>Jegyzet</span>
+                    <span>Dokumentumok</span>
                 </button>
                 <button className={`nav-item ${activeTab === 'planner' ? 'active' : ''}`} onClick={() => setActiveTab('planner')}>
                     <Icon name="calendar_month" />

@@ -280,6 +280,15 @@ body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color
 .note-time { font-size: 11px; color: var(--text-muted); }
 .note-content-text { font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.8); margin: 0; padding-left: 48px; }
 
+/* FILE CARDS */
+.file-card { display: flex; align-items: center; gap: 12px; }
+.file-preview-img { width: 60px; height: 60px; border-radius: 12px; object-fit: cover; }
+.file-icon-placeholder { width: 60px; height: 60px; border-radius: 12px; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.file-info-col { flex: 1; display: flex; flex-direction: column; }
+.file-info-col h3 { margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: white; word-break: break-all; }
+.icon-btn-small { width: 36px; height: 36px; border-radius: 10px; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; border: none; text-decoration: none; }
+
+
 /* CATEGORY FILTER */
 .category-filter-bar {
     display: flex; gap: 8px; overflow-x: auto; margin-bottom: 16px; padding-bottom: 4px;
