@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { GoogleGenAI } from "@google/genai";
 
 // Type definitions
 type EmailItem = {
@@ -16,6 +17,20 @@ type Transaction = {
     type: 'income' | 'expense';
     category: string;
     date: string;
+};
+
+type ProjectTask = {
+    id: string;
+    title: string;
+    description: string;
+    tag: string;
+    status: 'planning' | 'development' | 'done';
+};
+
+type ChatMessage = {
+    id: string;
+    role: 'user' | 'model';
+    text: string;
 };
 
 // Mock Data
@@ -40,9 +55,23 @@ const MOCK_TRANSACTIONS: Transaction[] = [
     { id: '6', title: 'Kávézó', amount: 3500, type: 'expense', category: 'Élelmiszer', date: new Date().toISOString().split('T')[0] },
 ];
 
+const INITIAL_PROJECTS: ProjectTask[] = [
+    { id: '1', title: 'Weboldal Redesign', description: 'Új UI kit implementálása', tag: 'Frontend', status: 'development' },
+    { id: '2', title: 'Adatbázis Migráció', description: 'Átállás új struktúrára', tag: 'Backend', status: 'planning' },
+    { id: '3', title: 'Marketing Kampány', description: 'Q4 hirdetések előkészítése', tag: 'Marketing', status: 'done' },
+    { id: '4', title: 'Mobil App MVP', description: 'Alapfunkciók tesztelése', tag: 'Mobile', status: 'planning' },
+];
+
 // Helper Components
 const Icon = ({ name, style, className }: { name: string; style?: React.CSSProperties, className?: string }) => {
-    // Simple text icons or emoji fallback
+    // Simple text icons or emoji fallback with mapping for Google Fonts Material Symbols
+    // If the name is a Material Symbol name, we render it as text inside the span with the correct class
+    const isMaterial = className?.includes('material-symbols-outlined');
+    
+    if (isMaterial) {
+        return <span className={className} style={style}>{name}</span>;
+    }
+
     const iconMap: Record<string, string> = {
         mail: '📧',
         calendar: '📅',
@@ -50,7 +79,10 @@ const Icon = ({ name, style, className }: { name: string; style?: React.CSSPrope
         chart: '📊',
         trending_up: '📈',
         trending_down: '📉',
-        category: '🏷️'
+        category: '🏷️',
+        send: '➤',
+        smart_toy: '🤖',
+        view_kanban: '📋'
     };
     return <span className={className} style={style}>{iconMap[name] || '•'}</span>;
 };
@@ -82,8 +114,175 @@ const EmailDetailModal = ({ email, onClose }: { email: EmailItem; onClose: () =>
     );
 };
 
-// FINANCE VIEW
-const FinanceView = () => {
+// --- AI ASSISTANT VIEW ---
+interface AiAssistantViewProps {
+    initialPrompt?: string | null;
+    onPromptHandled?: () => void;
+}
+
+const AiAssistantView = ({ initialPrompt, onPromptHandled }: AiAssistantViewProps) => {
+    const [messages, setMessages] = useState<ChatMessage[]>([
+        { id: '0', role: 'model', text: 'Szia! A HeR WiNnEr asszisztense vagyok. Miben segíthetek ma?' }
+    ]);
+    const [inputText, setInputText] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const hasHandledInitialPrompt = useRef(false);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
+
+    const sendMessage = async (text: string) => {
+        if (!text.trim() || isLoading) return;
+
+        const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: text };
+        setMessages(prev => [...prev, userMsg]);
+        setInputText('');
+        setIsLoading(true);
+
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const chat = ai.chats.create({
+                model: 'gemini-2.5-flash',
+                config: {
+                    systemInstruction: "You are a helpful, concise, and friendly productivity assistant for the 'HeR WiNnEr' app. You speak Hungarian. You help the user with organizing tasks, explaining financial terms, and general advice. If you receive financial data, analyze it briefly and give 1-2 practical tips."
+                }
+            });
+
+            let fullResponseText = '';
+            const resultStream = await chat.sendMessageStream({ message: userMsg.text });
+            
+            const aiMsgId = (Date.now() + 1).toString();
+            setMessages(prev => [...prev, { id: aiMsgId, role: 'model', text: '' }]);
+
+            for await (const chunk of resultStream) {
+                const textChunk = chunk.text;
+                fullResponseText += textChunk;
+                setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: fullResponseText } : m));
+            }
+
+        } catch (error) {
+            console.error("AI Error:", error);
+            setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: 'Elnézést, hiba történt a válaszadás közben.' }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Effect to handle initial prompt from other views
+    useEffect(() => {
+        if (initialPrompt && !hasHandledInitialPrompt.current) {
+            hasHandledInitialPrompt.current = true;
+            sendMessage(initialPrompt);
+            if (onPromptHandled) onPromptHandled();
+        }
+    }, [initialPrompt, onPromptHandled]);
+
+    // Reset the handled flag if the prompt is cleared (component unmount/remount usually resets state anyway, but safe to keep)
+    useEffect(() => {
+        if (!initialPrompt) {
+            hasHandledInitialPrompt.current = false;
+        }
+    }, [initialPrompt]);
+
+    return (
+        <div className="view-container chat-view">
+             <header className="view-header">
+                <h2>AI Asszisztens</h2>
+                <div className="status-indicator online">Online</div>
+            </header>
+
+            <div className="chat-messages custom-scrollbar">
+                {messages.map((msg) => (
+                    <div key={msg.id} className={`chat-bubble ${msg.role}`}>
+                        <div className="bubble-content">
+                            {msg.text}
+                        </div>
+                    </div>
+                ))}
+                {isLoading && <div className="chat-bubble model"><div className="bubble-content">Thinking...</div></div>}
+                <div ref={messagesEndRef} />
+            </div>
+
+            <div className="chat-input-area glass-panel">
+                <input 
+                    type="text" 
+                    placeholder="Írj egy üzenetet..." 
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)}
+                    disabled={isLoading}
+                />
+                <button onClick={() => sendMessage(inputText)} disabled={isLoading || !inputText.trim()} className="send-btn">
+                    <Icon name="send" className="material-symbols-outlined" />
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// --- PROJECTS VIEW (KANBAN) ---
+const ProjectsView = () => {
+    const [projects, setProjects] = useState<ProjectTask[]>(INITIAL_PROJECTS);
+
+    // Simple drag simulation: click to move to next stage
+    const cycleStatus = (id: string) => {
+        setProjects(prev => prev.map(p => {
+            if (p.id !== id) return p;
+            if (p.status === 'planning') return { ...p, status: 'development' };
+            if (p.status === 'development') return { ...p, status: 'done' };
+            if (p.status === 'done') return { ...p, status: 'planning' }; // Cycle back or archive
+            return p;
+        }));
+    };
+
+    const columns = [
+        { id: 'planning', label: 'Tervezés', color: 'var(--warning)' },
+        { id: 'development', label: 'Folyamatban', color: 'var(--secondary)' },
+        { id: 'done', label: 'Kész', color: 'var(--success)' }
+    ];
+
+    return (
+        <div className="view-container projects-view">
+             <header className="view-header">
+                <h2>Projektek</h2>
+                <button className="icon-btn"><span style={{fontSize: '20px'}}>+</span></button>
+            </header>
+            
+            <div className="kanban-board custom-scrollbar">
+                {columns.map(col => {
+                    const colProjects = projects.filter(p => p.status === col.id);
+                    return (
+                        <div key={col.id} className="kanban-column glass-panel">
+                            <div className="column-header" style={{borderBottomColor: col.color}}>
+                                <span>{col.label}</span>
+                                <span className="count-badge">{colProjects.length}</span>
+                            </div>
+                            <div className="column-content">
+                                {colProjects.map(p => (
+                                    <div key={p.id} className="project-card" onClick={() => cycleStatus(p.id)}>
+                                        <div className="project-tag">{p.tag}</div>
+                                        <h4>{p.title}</h4>
+                                        <p>{p.description}</p>
+                                    </div>
+                                ))}
+                                {colProjects.length === 0 && <div className="empty-col">Üres</div>}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+// --- FINANCE VIEW ---
+const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => {
     // Calculate Weekly Summary
     const weeklySummary = useMemo(() => {
         const income = MOCK_TRANSACTIONS
@@ -122,11 +321,28 @@ const FinanceView = () => {
         return new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(amount);
     };
 
+    const handleAnalysisClick = () => {
+        const prompt = `Szia Gemini! Kérlek, elemezd a heti pénzügyeimet! Itt vannak az adatok:
+        - Összes bevétel: ${formatHUF(weeklySummary.income)}
+        - Összes kiadás: ${formatHUF(weeklySummary.expense)}
+        - Egyenleg: ${formatHUF(weeklySummary.balance)}
+        
+        Kiadások kategóriánként:
+        ${weeklySummary.categories.map(c => `- ${c.name}: ${formatHUF(c.amount)}`).join('\n')}
+        
+        Kérlek, adj egy rövid összefoglalót és egy-két hasznos spórolási tanácsot!`;
+        
+        onAnalyze(prompt);
+    };
+
     return (
         <div className="view-container finance-view">
              <header className="view-header finance-header">
                 <h2>Pénzügyek</h2>
-                <span className="week-badge">Ezen a héten</span>
+                <button className="icon-btn" onClick={handleAnalysisClick} style={{width: 'auto', padding: '0 12px', fontSize: '13px', gap: '6px', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.4)', color: '#fff'}}>
+                    <Icon name="smart_toy" className="material-symbols-outlined" style={{fontSize: '18px'}}/>
+                    AI Elemzés
+                </button>
             </header>
 
             <div className="finance-content custom-scrollbar">
@@ -144,7 +360,7 @@ const FinanceView = () => {
                 <div className="finance-grid" style={{marginTop: '20px'}}>
                     <div className="finance-card glass-panel">
                         <div className="card-icon success-bg">
-                            <Icon name="trending_up" />
+                            <Icon name="trending_up" className="material-symbols-outlined" />
                         </div>
                         <div className="card-info">
                             <span className="label">Bevétel</span>
@@ -153,7 +369,7 @@ const FinanceView = () => {
                     </div>
                     <div className="finance-card glass-panel">
                         <div className="card-icon danger-bg">
-                            <Icon name="trending_down" />
+                            <Icon name="trending_down" className="material-symbols-outlined" />
                         </div>
                         <div className="card-info">
                             <span className="label">Kiadás</span>
@@ -164,7 +380,7 @@ const FinanceView = () => {
 
                 {/* Category Breakdown */}
                 <div className="section-title" style={{marginTop: '30px', marginBottom: '15px'}}>
-                    <Icon name="chart" style={{marginRight:'8px'}}/> 
+                    <Icon name="chart" className="material-symbols-outlined" style={{marginRight:'8px'}}/> 
                     Kiadások Kategóriánként
                 </div>
                 
@@ -193,7 +409,7 @@ const FinanceView = () => {
 
                 {/* Recent Transactions List */}
                 <div className="section-title" style={{marginTop: '30px', marginBottom: '15px'}}>
-                    <Icon name="category" style={{marginRight:'8px'}}/> 
+                    <Icon name="category" className="material-symbols-outlined" style={{marginRight:'8px'}}/> 
                     Legutóbbi Tranzakciók
                 </div>
                 <div className="transactions-list" style={{paddingBottom: '20px'}}>
@@ -217,7 +433,7 @@ const FinanceView = () => {
     );
 };
 
-// PLANNER VIEW
+// --- PLANNER VIEW ---
 const PlannerView = () => {
     const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
     const [selectedDate, setSelectedDate] = useState(new Date());
@@ -333,7 +549,7 @@ const PlannerView = () => {
                 )}
 
                 <div className="section-title" style={{marginTop: '24px'}}>
-                    <Icon name="mail" style={{marginRight:'8px', fontSize:'18px'}}/> 
+                    <Icon name="mail" className="material-symbols-outlined" style={{marginRight:'8px', fontSize:'18px'}}/> 
                     Beérkezett Levelek (Gmail)
                 </div>
                 <div className="email-preview glass-panel">
@@ -354,14 +570,30 @@ const PlannerView = () => {
     );
 };
 
-// MAIN APP SHELL
+// --- MAIN APP SHELL ---
 const App = () => {
-    const [currentView, setCurrentView] = useState<'planner' | 'finance'>('finance');
+    const [currentView, setCurrentView] = useState<'planner' | 'finance' | 'projects' | 'ai'>('ai');
+    const [pendingAiPrompt, setPendingAiPrompt] = useState<string | null>(null);
+
+    const handleAiAnalysis = (prompt: string) => {
+        setPendingAiPrompt(prompt);
+        setCurrentView('ai');
+    };
+
+    const renderView = () => {
+        switch(currentView) {
+            case 'planner': return <PlannerView />;
+            case 'finance': return <FinanceView onAnalyze={handleAiAnalysis} />;
+            case 'projects': return <ProjectsView />;
+            case 'ai': return <AiAssistantView initialPrompt={pendingAiPrompt} onPromptHandled={() => setPendingAiPrompt(null)} />;
+            default: return <AiAssistantView />;
+        }
+    };
 
     return (
         <div className="app-shell">
             <div className="content-area">
-                {currentView === 'planner' ? <PlannerView /> : <FinanceView />}
+                {renderView()}
             </div>
             
             <nav className="bottom-nav">
@@ -369,15 +601,29 @@ const App = () => {
                     className={`nav-item ${currentView === 'planner' ? 'active' : ''}`}
                     onClick={() => setCurrentView('planner')}
                 >
-                    <Icon name="calendar" className="material-symbols-outlined" />
+                    <Icon name="calendar_month" className="material-symbols-outlined" />
                     <span>Naptár</span>
+                </button>
+                 <button 
+                    className={`nav-item ${currentView === 'projects' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('projects')}
+                >
+                    <Icon name="view_kanban" className="material-symbols-outlined" />
+                    <span>Projektek</span>
+                </button>
+                 <button 
+                    className={`nav-item ${currentView === 'ai' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('ai')}
+                >
+                    <Icon name="smart_toy" className="material-symbols-outlined" />
+                    <span>Gemini</span>
                 </button>
                 <button 
                     className={`nav-item ${currentView === 'finance' ? 'active' : ''}`}
                     onClick={() => setCurrentView('finance')}
                 >
-                    <Icon name="finance" className="material-symbols-outlined" />
-                    <span>Pénzügyek</span>
+                    <Icon name="account_balance_wallet" className="material-symbols-outlined" />
+                    <span>Pénzügy</span>
                 </button>
             </nav>
         </div>
