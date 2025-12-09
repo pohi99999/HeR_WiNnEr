@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
 // Type definitions
 type EmailItem = {
@@ -7,6 +7,15 @@ type EmailItem = {
     subject: string;
     time: string;
     body: string;
+};
+
+type Transaction = {
+    id: string;
+    title: string;
+    amount: number;
+    type: 'income' | 'expense';
+    category: string;
+    date: string;
 };
 
 // Mock Data
@@ -22,14 +31,28 @@ const MOCK_EMAILS: EmailItem[] = [
     { id: '3', sender: 'Support', subject: 'Ticket #1234 Resolved', time: 'Yesterday', body: 'Your support ticket has been marked as resolved.' },
 ];
 
+const MOCK_TRANSACTIONS: Transaction[] = [
+    { id: '1', title: 'Fizetés', amount: 450000, type: 'income', category: 'Bevétel', date: new Date().toISOString().split('T')[0] },
+    { id: '2', title: 'Nagybevásárlás', amount: 25000, type: 'expense', category: 'Élelmiszer', date: new Date().toISOString().split('T')[0] },
+    { id: '3', title: 'Benzin', amount: 18000, type: 'expense', category: 'Utazás', date: new Date(Date.now() - 86400000).toISOString().split('T')[0] },
+    { id: '4', title: 'Netflix', amount: 4500, type: 'expense', category: 'Szórakozás', date: new Date(Date.now() - 172800000).toISOString().split('T')[0] },
+    { id: '5', title: 'Villanyszámla', amount: 12000, type: 'expense', category: 'Rezsi', date: new Date(Date.now() - 259200000).toISOString().split('T')[0] },
+    { id: '6', title: 'Kávézó', amount: 3500, type: 'expense', category: 'Élelmiszer', date: new Date().toISOString().split('T')[0] },
+];
+
 // Helper Components
-const Icon = ({ name, style }: { name: string; style?: React.CSSProperties }) => {
+const Icon = ({ name, style, className }: { name: string; style?: React.CSSProperties, className?: string }) => {
     // Simple text icons or emoji fallback
     const iconMap: Record<string, string> = {
         mail: '📧',
         calendar: '📅',
+        finance: '💰',
+        chart: '📊',
+        trending_up: '📈',
+        trending_down: '📉',
+        category: '🏷️'
     };
-    return <span style={style}>{iconMap[name] || '•'}</span>;
+    return <span className={className} style={style}>{iconMap[name] || '•'}</span>;
 };
 
 const EmailDetailModal = ({ email, onClose }: { email: EmailItem; onClose: () => void }) => {
@@ -53,6 +76,141 @@ const EmailDetailModal = ({ email, onClose }: { email: EmailItem; onClose: () =>
                 </div>
                 <div className="email-body">
                     {email.body}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// FINANCE VIEW
+const FinanceView = () => {
+    // Calculate Weekly Summary
+    const weeklySummary = useMemo(() => {
+        const income = MOCK_TRANSACTIONS
+            .filter(t => t.type === 'income')
+            .reduce((acc, curr) => acc + curr.amount, 0);
+            
+        const expense = MOCK_TRANSACTIONS
+            .filter(t => t.type === 'expense')
+            .reduce((acc, curr) => acc + curr.amount, 0);
+
+        // Group expenses by category
+        const categories: Record<string, number> = {};
+        MOCK_TRANSACTIONS
+            .filter(t => t.type === 'expense')
+            .forEach(t => {
+                categories[t.category] = (categories[t.category] || 0) + t.amount;
+            });
+
+        const sortedCategories = Object.entries(categories)
+            .sort(([, a], [, b]) => b - a)
+            .map(([name, amount]) => ({
+                name,
+                amount,
+                percentage: expense > 0 ? (amount / expense) * 100 : 0
+            }));
+
+        return {
+            income,
+            expense,
+            balance: income - expense,
+            categories: sortedCategories
+        };
+    }, []);
+
+    const formatHUF = (amount: number) => {
+        return new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(amount);
+    };
+
+    return (
+        <div className="view-container finance-view">
+             <header className="view-header finance-header">
+                <h2>Pénzügyek</h2>
+                <span className="week-badge">Ezen a héten</span>
+            </header>
+
+            <div className="finance-content custom-scrollbar">
+                {/* Total Balance Card */}
+                <div className="glass-panel finance-summary-card">
+                    <div className="finance-summary">
+                        <h3>Heti Egyenleg</h3>
+                        <div className={`big-number ${weeklySummary.balance >= 0 ? 'positive' : 'negative'}`}>
+                            {formatHUF(weeklySummary.balance)}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Income / Expense Split */}
+                <div className="finance-grid" style={{marginTop: '20px'}}>
+                    <div className="finance-card glass-panel">
+                        <div className="card-icon success-bg">
+                            <Icon name="trending_up" />
+                        </div>
+                        <div className="card-info">
+                            <span className="label">Bevétel</span>
+                            <span className="amount success-text">{formatHUF(weeklySummary.income)}</span>
+                        </div>
+                    </div>
+                    <div className="finance-card glass-panel">
+                        <div className="card-icon danger-bg">
+                            <Icon name="trending_down" />
+                        </div>
+                        <div className="card-info">
+                            <span className="label">Kiadás</span>
+                            <span className="amount danger-text">{formatHUF(weeklySummary.expense)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Category Breakdown */}
+                <div className="section-title" style={{marginTop: '30px', marginBottom: '15px'}}>
+                    <Icon name="chart" style={{marginRight:'8px'}}/> 
+                    Kiadások Kategóriánként
+                </div>
+                
+                <div className="glass-panel" style={{padding: '20px'}}>
+                    {weeklySummary.categories.length > 0 ? (
+                        <div className="category-list">
+                            {weeklySummary.categories.map((cat, idx) => (
+                                <div key={idx} className="cat-visual-row">
+                                    <div className="cat-header">
+                                        <span className="cat-name">{cat.name}</span>
+                                        <span className="cat-amount">{formatHUF(cat.amount)}</span>
+                                    </div>
+                                    <div className="cat-bar-bg">
+                                        <div 
+                                            className="cat-bar-fill" 
+                                            style={{width: `${cat.percentage}%`, backgroundColor: `hsl(${200 + (idx * 40)}, 70%, 60%)`}}
+                                        ></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="empty-state">Nincs kiadás ezen a héten.</div>
+                    )}
+                </div>
+
+                {/* Recent Transactions List */}
+                <div className="section-title" style={{marginTop: '30px', marginBottom: '15px'}}>
+                    <Icon name="category" style={{marginRight:'8px'}}/> 
+                    Legutóbbi Tranzakciók
+                </div>
+                <div className="transactions-list" style={{paddingBottom: '20px'}}>
+                    {MOCK_TRANSACTIONS.map(t => (
+                        <div key={t.id} className="transaction-item glass-panel" style={{display: 'flex', alignItems: 'center', padding: '12px', marginBottom: '8px'}}>
+                             <div className={`card-icon tiny ${t.type === 'income' ? 'success-bg' : 'danger-bg'}`} style={{width: '32px', height: '32px', fontSize: '14px', marginRight: '12px'}}>
+                                {t.type === 'income' ? '+' : '-'}
+                            </div>
+                            <div style={{flex: 1}}>
+                                <div style={{fontWeight: 600, fontSize: '14px'}}>{t.title}</div>
+                                <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>{t.category} • {t.date}</div>
+                            </div>
+                            <div style={{fontWeight: 700, fontSize: '14px', color: t.type === 'income' ? 'var(--success)' : 'var(--text-main)'}}>
+                                {t.type === 'income' ? '+' : ''}{formatHUF(t.amount)}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>
@@ -196,4 +354,34 @@ const PlannerView = () => {
     );
 };
 
-export default PlannerView;
+// MAIN APP SHELL
+const App = () => {
+    const [currentView, setCurrentView] = useState<'planner' | 'finance'>('finance');
+
+    return (
+        <div className="app-shell">
+            <div className="content-area">
+                {currentView === 'planner' ? <PlannerView /> : <FinanceView />}
+            </div>
+            
+            <nav className="bottom-nav">
+                <button 
+                    className={`nav-item ${currentView === 'planner' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('planner')}
+                >
+                    <Icon name="calendar" className="material-symbols-outlined" />
+                    <span>Naptár</span>
+                </button>
+                <button 
+                    className={`nav-item ${currentView === 'finance' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('finance')}
+                >
+                    <Icon name="finance" className="material-symbols-outlined" />
+                    <span>Pénzügyek</span>
+                </button>
+            </nav>
+        </div>
+    );
+};
+
+export default App;
