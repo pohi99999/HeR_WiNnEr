@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
 import { GoogleGenAI } from "@google/genai";
 
 // Type definitions
@@ -1007,5 +1008,18 @@ const App = () => {
     </div>
   );
 };
+
+// Initialize React 19 app
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  const root = createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+} else {
+  console.error("Root element not found!");
+}
 
 export default App;
