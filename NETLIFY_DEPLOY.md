@@ -1,6 +1,13 @@
-# 🚀 Netlify Deployment - Gyorsútmutató
+# 🚀 Netlify Deployment - Firebase-szel
 
-## 📦 Lépések
+## ⚠️ FONTOS: Előbb Firebase Setup!
+
+**Még nincs Firebase projekted?**  
+👉 Kezdd itt: [FIREBASE_QUICKSTART.md](FIREBASE_QUICKSTART.md)
+
+---
+
+## 📦 Deployment Lépések
 
 ### 1️⃣ GitHub Push
 
@@ -18,20 +25,30 @@ git push origin main
 4. Keresd meg: **`HeR_WiNnEr`** repository-t
 5. Kattints: **"Deploy site"**
 
-### 3️⃣ Környezeti Változók
+### 3️⃣ Környezeti Változók (7 darab!)
 
 **Site settings** → **Environment variables** → **Add a variable**
 
-Adj hozzá:
+**MIND a 7 változót add hozzá:**
 
-| Key | Value |
-|-----|-------|
-| `VITE_GEMINI_API_KEY` | `your_actual_gemini_api_key` |
-| `GEMINI_API_KEY` | `your_actual_gemini_api_key` |
+| Key | Value | Forrás |
+|-----|-------|--------|
+| `VITE_GEMINI_API_KEY` | `your_gemini_api_key` | Google AI Studio |
+| `VITE_FIREBASE_API_KEY` | `AIza...` | Firebase Console |
+| `VITE_FIREBASE_AUTH_DOMAIN` | `project-id.firebaseapp.com` | Firebase Console |
+| `VITE_FIREBASE_PROJECT_ID` | `project-id` | Firebase Console |
+| `VITE_FIREBASE_STORAGE_BUCKET` | `project-id.appspot.com` | Firebase Console |
+| `VITE_Firebase Authorized Domains
 
-⚠️ **Fontos:** Mindkét változót állítsd be!
+**Firebase Console:**
+1. **Authentication** → **Settings** → **Authorized domains**
+2. Kattints: **"Add domain"**
+3. Add hozzá: `your-app.netlify.app` (a Netlify URL-ed)
+4. **Save**
 
-### 4️⃣ Redeploy
+⚠️ **Nélküle a Google Sign-In nem fog működni!**
+
+### 5️⃣ Redeploy
 
 A környezeti változók hozzáadása után:
 - **Deploys** tab → **Trigger deploy** → **Deploy site**
@@ -39,6 +56,16 @@ A környezeti változók hozzáadása után:
 ---
 
 ## ✅ Ellenőrzés
+
+Deployment után:
+
+1. 🌐 **Nyisd meg az URL-t** (pl. `https://your-site.netlify.app`)
+2. 🔐 **Login oldal jelenik meg**
+3. 🔍 **F12** → **Console** → Nézd meg, van-e hiba
+4. 🎯 **"Bejelentkezés Google fiókkal"** gomb
+5. 📧 **Válaszd ki a Gmail fiókodat**
+6. ✅ **Sikeres bejelentkezés!**
+7. 🤖 **Teszteld a funkciókat**
 
 Deployment után:
 

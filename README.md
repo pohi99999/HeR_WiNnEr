@@ -4,20 +4,37 @@
 
 # 🏆 HeR WiNnEr - AI-Powered Productivity App
 
-**Verzió:** 1.0.0  
-**Státusz:** ✅ Production Ready (in-memory backend)
+**Verzió:** 2.0.0 🔥  
+**Státusz:** ✅ Production Ready (Firebase Backend)
 
-Modern produktivitási alkalmazás Gemini AI asszisztenssel, pénzügyi követéssel, naptárral és projekt managementtel.
+Modern produktivitási alkalmazás **Gmail fiókos bejelentkezéssel**, Gemini AI asszisztenssel, pénzügyi követéssel, naptárral és projekt managementtel.
+
+## 🔥 ÚJ: Firebase Integráció!
+
+✅ **Google Sign-In** - Bejelentkezés Gmail fiókkal  
+✅ **Cloud Firestore** - Perzisztens adattárolás  
+✅ **Security Rules** - Biztonságos adatvédelem  
+✅ **Real-time sync** - Automatikus frissítés  
+
+👉 **Kezdd itt:** [FIREBASE_QUICKSTART.md](FIREBASE_QUICKSTART.md) - 3 lépésben kész!
 
 ## 🆕 Legfrissebb Frissítések (2025.12.11)
 
-- ✅ **Netlify üres képernyő probléma MEGOLDVA**
-- ✅ **Backend API struktúra implementálva**
-- ✅ **Error handling javítva**
-- ✅ **Build optimalizáció kész**
-- 📚 **Részletes dokumentáció hozzáadva**
+### v2.0.0 - Firebase Integráció 🔥
+- ✅ **Firebase Authentication** - Google Sign-In Gmail fiókkal
+- ✅ **Firestore Database** - Perzisztens adattárolás
+- ✅ **Security Rules** - User-alapú adatvédelem
+- ✅ **Gmail/Calendar API** scope-ok előkészítve
+- 🎯 **Login oldal** és user profil UI
 
-➡️ **Részletek:** [FEJLESZTESEK.md](FEJLESZTESEK.md)
+### v1.0.0 - Alapok
+- ✅ Netlify üres képernyő probléma megoldva
+- ✅ React 19 root fix
+- ✅ Error handling javítva
+- ✅ Build optimalizáció
+
+➡️ **Firebase Setup:** [FIREBASE_SETUP.md](FIREBASE_SETUP.md)  
+➡️ **Migráció Részletek:** [FIREBASE_MIGRATION.md](FIREBASE_MIGRATION.md)
 
 ---
 
@@ -133,13 +150,14 @@ netlify deploy --prod
 - 🎨 **Modern UI** - Dark mode, glassmorphism design
 - 📱 **Mobil Optimalizált** - Responsive layout
 
-### 🔧 Backend API
+### Backend & Authentication
 
-- ✅ **REST API** Netlify Functions-zel
-- ✅ **CRUD műveletek** transactions, events, projects-re
-- ✅ **CORS támogatás**
-- ✅ **Error handling**
-- ⚠️ **In-memory storage** (éles környezethez DB szükséges)
+- ✅ **Firebase Firestore** - Cloud NoSQL adatbázis
+- ✅ **Google Sign-In** - Gmail fiókkal bejelentkezés
+- ✅ **Security Rules** - User-szintű adatvédelem
+- ✅ **Real-time sync** - Automatikus adatfrissítés
+- ✅ **Perzisztens tárolás** - Adatok megmaradnak
+- 🔄 **Gmail/Calendar API** - Scope-ok előkészítve
 
 ---
 
@@ -152,10 +170,12 @@ netlify deploy --prod
 - 🎨 **Custom CSS** - No framework, pure CSS
 - 🤖 **Google Gemini AI** - AI integration
 
-### Backend
-- 🌐 **Netlify Functions** - Serverless API
-- 📦 **TypeScript** - Type-safe backend
-- 🔄 **REST API** - Standard endpoints
+### Backend & Database
+- 🔥 **Firebase** - Google Cloud Platform
+- 🗄️ **Firestore** - NoSQL cloud database
+- 🔐 **Firebase Auth** - Google Sign-In
+- ⚡ **Real-time** - Live data synchronization
+- 🛡️ **Security Rules** - Row-level security
 
 ### DevOps
 - 🚀 **Netlify** - Hosting & CI/CD
@@ -166,12 +186,24 @@ netlify deploy --prod
 
 ## 🔐 Környezeti Változók
 
-**Helyi fejlesztéshez** (`.env.local`):
-```env
+# Gemini AI
 VITE_GEMINI_API_KEY=your_api_key_here
-GEMINI_API_KEY=your_api_key_here
+
+# Firebase (6 változó szükséges!)
+VITE_FIREBASE_API_KEY=your_firebase_api_key
+VITE_FIREBASE_AUTH_DOMAIN=project-id.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=project-id
+VITE_FIREBASE_STORAGE_BUCKET=project-id.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abc123
 ```
 
+**Firebase Setup:**  
+👉 Részletes útmutató: [FIREBASE_SETUP.md](FIREBASE_SETUP.md)
+
+**Netlify production:**
+- Állítsd be MINDEN változót a Dashboard-on
+-
 **Netlify production-höz:**
 - Állítsd be a Dashboard-on: Site settings → Environment variables
 
@@ -187,35 +219,47 @@ GEMINI_API_KEY=your_api_key_here
 
 ### Biztonság
 ✅ **Security Headers** - XSS, CSP, Frame Options  
-✅ **HTTPS Redirect** - Automatikus  
-✅ **CORS konfiguráció** - API védelem  
-✅ **Input validáció** - Backend szinten  
+✅ *✅ Firebase Integráció Előnyei
 
-### Performance
-✅ **SPA Routing** - Client-side navigation  
-✅ **Lazy Loading** - Komponensek igény szerint  
-✅ **Responsive Design** - Mobil-first approach  
-✅ **Optimized Fonts** - Google Fonts preconnect  
+✅ **Perzisztens adatok** - Firestore cloud database  
+✅ **Google Authentication** - Gmail fiókkal bejelentkezés  
+✅ **Security Rules** - User-alapú adatvédelem  
+✅ **Real-time sync** - Automatikus adatfrissítés  
+✅ **Offline support** - Cache mechanizmus  
+✅ **Skalálható** - Automatikus scaling  
 
----
+## ⚠️ Folyamatban
 
-## 🐛 Ismert Korlátozások
+🔄 **Gmail API integráció** - Valós emailek (scope előkészítve)  
+🔄 **Calendar API integráció** - Valós események (scope előkészítve)  
+🔄 *✅ v2.0.0 - Firebase (KÉSZ)
+- [x] Firebase Authentication
+- [x] Firestore Database
+- [x] Google Sign-In
+- [x] Security Rules
+- [x] Gmail/Calendar scope-ok
 
-⚠️ **In-memory backend** - Újraindításkor elvesznek az adatok  
-⚠️ **Nincs autentikáció** - User ID placeholder  
-⚠️ **Nincs adatbázis** - Perzisztens tároláshoz DB szükséges  
-⚠️ **Gmail/Calendar** - Mock adatok, API integráció hiányzik  
+### v2.1 (Következő)
+- [ ] Gmail API - Valós emailek olvasása
+- [ ] Calendar API - Valós események szinkronizálása
+- [ ] Email értesítések
+- [ ] Naptár sync beállítások
 
-**Megoldás:** Lásd "Következő Lépések" a [FEJLESZTESEK.md](FEJLESZTESEK.md) fájlban
+### v2.2 (Tervezett)
+- [ ] Push notifications (FCM)
+- [ ] PWA funkciók
+- [ ] Offline mód javítása
+- [ ] Service Worker
+- [ ] Add to Home Screen
 
----
-
-## 🔜 Roadmap
-
-### v1.1 (Tervezett)
-- [ ] Supabase integráció
-- [ ] User authentication (OAuth)
-- [ ] Perzisztens adattárolás
+### v3.0 (Jövőbeli)
+- [ ] Multi-language support (EN/HU)
+- [ ] Dark/Light mode toggle
+- [ ] Custom themes
+- [ ] Export/Import funkciók
+- [ ] Dashboard analytics
+- [ ] Budget tracking
+- [ ] AI-powered insightrolás
 - [ ] Profilok és beállítások
 
 ### v1.2 (Tervezett)

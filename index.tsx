@@ -979,39 +979,7 @@ const LoginView = ({ onLogin }: { onLogin: () => void }) => {
       await signInWithGoogle();
       onLogin();
     } catch (err) {
-      cohandleSignOut = async () => {
-    try {
-      await authSignOut();
-      setUser(null);
-    } catch (error) {
-      console.error("Sign out error:", error);
-    }
-  };
-
-  // Loading state
-  if (isLoading) {
-    return (
-      <div
-        style={{
-          height: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div className="spin" style={{ fontSize: "48px" }}>
-          ⏳
-        </div>
-      </div>
-    );
-  }
-
-  // Show login if not authenticated
-  if (!user) {
-    return <LoginView onLogin={() => setIsLoading(false)} />;
-  }
-
-  const nsole.error("Login error:", err);
+      console.error("Login error:", err);
       setError(
         err instanceof Error
           ? err.message
