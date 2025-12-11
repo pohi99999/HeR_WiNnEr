@@ -1,6 +1,16 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { GoogleGenAI } from "@google/genai";
+import { User } from "firebase/auth";
+import {
+  signInWithGoogle,
+  signOut as authSignOut,
+  onAuthChange,
+  getUserDisplayName,
+  getUserPhotoURL,
+  isAuthenticated,
+} from "./authService";
+import { isFirebaseConfigured } from "./firebase";
 
 // Type definitions
 type EmailItem = {
@@ -300,6 +310,7 @@ const AiAssistantView = ({
   ]);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasHandledInitialPrompt = useRef(false);
 
@@ -326,9 +337,11 @@ const AiAssistantView = ({
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error('API kulcs nincs beállítva. Kérlek, állítsd be a VITE_GEMINI_API_KEY környezeti változót.');
+        setApiKeyError(true);
+        throw new Error('⚠️ API kulcs nincs beállítva!\n\nA Gemini AI használatához szükséges API kulcs.\n\n📝 Hogyan szerezz API kulcsot:\n1. Látogass el: https://aistudio.google.com/app/apikey\n2. Jelentkezz be Google fiókkal\n3. Kattints "Create API key" gombra\n4. Másold be az .env.local fájlba: VITE_GEMINI_API_KEY=your_key_here');
       }
 
+      setApiKeyError(false);
       const ai = new GoogleGenAI({ apiKey });
       const chat = ai.chats.create({
         model: "gemini-2.0-flash-exp",
@@ -362,14 +375,14 @@ const AiAssistantView = ({
       console.error("AI Error:", error);
       const errorMessage = error instanceof Error 
         ? error.message 
-        : "Elnézést, hiba történt a válaszadás közben.";
+        : "❌ Elnézést, hiba történt a válaszadás közben. Kérlek, próbáld újra!";
       
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now().toString(),
           role: "model",
-          text: `❌ ${errorMessage}`,
+          text: errorMessage,
         },
       ]);
     } finally {
@@ -398,8 +411,26 @@ const AiAssistantView = ({
     <div className="view-container chat-view">
       <header className="view-header">
         <h2>AI Asszisztens</h2>
-        <div className="status-indicator online">Online</div>
+        <div className={`status-indicator ${apiKeyError ? 'offline' : 'online'}`}>
+          {apiKeyError ? 'API kulcs hiányzik' : 'Online'}
+        </div>
       </header>
+
+      {apiKeyError && (
+        <div className="glass-panel" style={{ 
+          margin: '10px 0', 
+          padding: '15px', 
+          background: 'rgba(239, 68, 68, 0.1)',
+          borderColor: 'rgba(239, 68, 68, 0.3)'
+        }}>
+          <div style={{ fontSize: '13px', color: 'var(--danger)', lineHeight: '1.6' }}>
+            <strong>⚠️ API kulcs hiányzik!</strong>
+            <p style={{ margin: '8px 0', fontSize: '12px' }}>
+              Szerezz API kulcsot: <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>Google AI Studio</a>
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="chat-messages custom-scrollbar">
         {messages.map((msg) => (
@@ -936,12 +967,227 @@ const PlannerView = () => {
   );
 };
 
+// --- LOGIN VIEW ---
+const LoginView = ({ onLogin }: { onLogin: () => void }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await signInWithGoogle();
+      onLogin();
+    } catch (err) {
+      cohandleSignOut = async () => {
+    try {
+      await authSignOut();
+      setUser(null);
+    } catch (error) {
+      console.error("Sign out error:", error);
+    }
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          height: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div className="spin" style={{ fontSize: "48px" }}>
+          ⏳
+        </div>
+      </div>
+    );
+  }
+
+  // Show login if not authenticated
+  if (!user) {
+    return <LoginView onLogin={() => setIsLoading(false)} />;
+  }
+
+  const nsole.error("Login error:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Hiba történt a bejelentkezés során."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="login-view"
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px",
+        textAlign: "center",
+      }}
+    >
+      <div className="glass-panel" style={{ maxWidth: "400px", padding: "40px" }}>
+        <h1 style={{ fontSize: "32px", marginBottom: "10px", fontWeight: 800 }}>
+          🏆 HeR WiNnEr
+        </h1>
+        <p
+          style={{
+            color: "var(--text-muted)",
+            marginBottom: "30px",
+            fontSize: "14px",
+          }}
+        >
+          AI-alapú produktivitási alkalmazás
+        </p>
+
+        {!isFirebaseConfigured() && (
+          <div
+            style={{
+              background: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "12px",
+              padding: "15px",
+              marginBottom: "20px",
+              fontSize: "13px",
+              color: "var(--danger)",
+            }}
+          >
+            ⚠️ Firebase nincs konfigurálva! Állítsd be a környezeti változókat.
+          </div>
+        )}
+
+        {error && (
+          <div
+            style={{
+              background: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "12px",
+              padding: "15px",
+              marginBottom: "20px",
+              fontSize: "13px",
+              color: "var(--danger)",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <button
+          onClick={handleGoogleSignIn}
+          disabled={isLoading || !isFirebaseConfigured()}
+          style={{
+            width: "100%",
+            padding: "16px",
+            background: "white",
+            color: "#333",
+            border: "none",
+            borderRadius: "12px",
+            fontSize: "15px",
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "12px",
+            transition: "all 0.2s",
+          }}
+        >
+          {isLoading ? (
+            <span className="spin">⏳</span>
+          ) : (
+            <>
+              <span style={{ fontSize: "20px" }}>🔐</span>
+              Bejelentkezés Google fiókkal
+            </>
+          )}
+        </button>
+
+        <p
+          style={{
+            fontSize: "12px",
+            color: "var(--text-muted)",
+            marginTop: "20px",
+          }}
+        >
+          A bejelentkezéssel elfogadod az adatvédelmi szabályzatot.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 // --- MAIN APP SHELL ---
 const App = () => {
   const [currentView, setCurrentView] = useState<
     "planner" | "finance" | "projects" | "ai"
   >("ai");
   const [pendingAiPrompt, setPendingAiPrompt] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Listen to auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthChange((authUser) => {
+      setUser(authUser);
+      {/* User Profile Header */}
+      <header
+        className="app-header glass-panel"
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+          padding: "12px 20px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          borderRadius: 0,
+          borderBottom: "1px solid var(--border-glass)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {getUserPhotoURL() && (
+            <img
+              src={getUserPhotoURL()!}
+              alt="Profile"
+              style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "50%",
+                border: "2px solid var(--primary)",
+              }}
+            />
+          )}
+          <div>
+            <div style={{ fontSize: "14px", fontWeight: 600 }}>
+              {getUserDisplayName()}
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+              {user?.email}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="icon-btn"
+          style={{ fontSize: "12px", padding: "8px 12px", width: "auto" }}
+        >
+          Kilépés
+        </button>
+      </header>
+
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleAiAnalysis = (prompt: string) => {
     setPendingAiPrompt(prompt);
