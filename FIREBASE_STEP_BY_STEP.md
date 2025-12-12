@@ -107,7 +107,7 @@ Látni fogsz egy ilyen kódot:
 
 ```javascript
 const firebaseConfig = {
-  apiKey: "AIzaSyB1234567890abcdefgh",
+  apiKey: "YOUR_FIREBASE_API_KEY",
   authDomain: "her-winner-12345.firebaseapp.com",
   projectId: "her-winner-12345",
   storageBucket: "her-winner-12345.appspot.com",
@@ -133,7 +133,7 @@ Cseréld le az összes `your_...` értéket:
 VITE_GEMINI_API_KEY=your_existing_gemini_key
 
 # Firebase Config (Firebase Console-ból másold)
-VITE_FIREBASE_API_KEY=AIzaSyB1234567890abcdefgh
+VITE_FIREBASE_API_KEY=YOUR_FIREBASE_API_KEY
 VITE_FIREBASE_AUTH_DOMAIN=her-winner-12345.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=her-winner-12345
 VITE_FIREBASE_STORAGE_BUCKET=her-winner-12345.appspot.com

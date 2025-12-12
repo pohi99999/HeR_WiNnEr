@@ -373,9 +373,35 @@ const AiAssistantView = ({
       }
     } catch (error) {
       console.error("AI Error:", error);
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : "❌ Elnézést, hiba történt a válaszadás közben. Kérlek, próbáld újra!";
+        const extractErrorText = (err: unknown): string => {
+          if (err instanceof Error) return err.message;
+          if (typeof err === "string") return err;
+          if (err && typeof err === "object") {
+            const anyErr = err as any;
+            const nested =
+              anyErr?.error?.message ?? anyErr?.message ?? anyErr?.error?.error?.message;
+            if (typeof nested === "string") return nested;
+          }
+          try {
+            return JSON.stringify(err);
+          } catch {
+            return "";
+          }
+        };
+
+        const rawErrorText = extractErrorText(error);
+        const normalized = rawErrorText.toLowerCase();
+        const isQuotaError =
+          normalized.includes("resource_exhausted") ||
+          normalized.includes("quota exceeded") ||
+          normalized.includes("generativelanguage.googleapis.com") ||
+          normalized.includes("\"code\": 429") ||
+          normalized.includes("code\":429");
+
+        const errorMessage = isQuotaError
+          ? "⚠️ Az AI jelenleg nem elérhető (Gemini kvóta/limit).\n\nHa ez demó: most is tudod használni az appot, csak az AI válasz nem fog jönni.\n\nMegoldás: ellenőrizd a Google AI Studio / Usage & Billing beállításokat, vagy válts olyan API kulcsra/projektre, ahol van engedélyezett kvóta."
+          : rawErrorText ||
+            "❌ Elnézést, hiba történt a válaszadás közben. Kérlek, próbáld újra!";
       
       setMessages((prev) => [
         ...prev,
