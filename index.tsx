@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // Type definitions
 type EmailItem = {
@@ -64,8 +66,6 @@ const INITIAL_PROJECTS: ProjectTask[] = [
 
 // Helper Components
 const Icon = ({ name, style, className }: { name: string; style?: React.CSSProperties, className?: string }) => {
-    // Simple text icons or emoji fallback with mapping for Google Fonts Material Symbols
-    // If the name is a Material Symbol name, we render it as text inside the span with the correct class
     const isMaterial = className?.includes('material-symbols-outlined');
     
     if (isMaterial) {
@@ -148,9 +148,15 @@ const AiAssistantView = ({ initialPrompt, onPromptHandled }: AiAssistantViewProp
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const chat = ai.chats.create({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3-flash-preview',
                 config: {
-                    systemInstruction: "You are a helpful, concise, and friendly productivity assistant for the 'HeR WiNnEr' app. You speak Hungarian. You help the user with organizing tasks, explaining financial terms, and general advice. If you receive financial data, analyze it briefly and give 1-2 practical tips."
+                    systemInstruction: `You are a high-end personal financial coach and productivity expert for the 'HeR WiNnEr' ecosystem. 
+                    You speak Hungarian naturally. When analyzing finances:
+                    1. Be concise but insightful.
+                    2. Categorize expenses into 'Essential' vs 'Discretionary'.
+                    3. Highlight the largest spending category.
+                    4. Provide 3 highly specific, actionable saving tips (e.g., 'Cook more at home' is generic, 'Try to limit cafes to twice a week to save 7,000 HUF' is better).
+                    5. Use markdown for readability (bolding, lists, tables).`
                 }
             });
 
@@ -174,7 +180,6 @@ const AiAssistantView = ({ initialPrompt, onPromptHandled }: AiAssistantViewProp
         }
     };
 
-    // Effect to handle initial prompt from other views
     useEffect(() => {
         if (initialPrompt && !hasHandledInitialPrompt.current) {
             hasHandledInitialPrompt.current = true;
@@ -183,7 +188,6 @@ const AiAssistantView = ({ initialPrompt, onPromptHandled }: AiAssistantViewProp
         }
     }, [initialPrompt, onPromptHandled]);
 
-    // Reset the handled flag if the prompt is cleared (component unmount/remount usually resets state anyway, but safe to keep)
     useEffect(() => {
         if (!initialPrompt) {
             hasHandledInitialPrompt.current = false;
@@ -201,11 +205,21 @@ const AiAssistantView = ({ initialPrompt, onPromptHandled }: AiAssistantViewProp
                 {messages.map((msg) => (
                     <div key={msg.id} className={`chat-bubble ${msg.role}`}>
                         <div className="bubble-content">
-                            {msg.text}
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {msg.text}
+                            </ReactMarkdown>
                         </div>
                     </div>
                 ))}
-                {isLoading && <div className="chat-bubble model"><div className="bubble-content">Thinking...</div></div>}
+                {isLoading && (
+                    <div className="chat-bubble model">
+                        <div className="bubble-content">
+                            <div className="typing-indicator">
+                                <span></span><span></span><span></span>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <div ref={messagesEndRef} />
             </div>
 
@@ -230,13 +244,12 @@ const AiAssistantView = ({ initialPrompt, onPromptHandled }: AiAssistantViewProp
 const ProjectsView = () => {
     const [projects, setProjects] = useState<ProjectTask[]>(INITIAL_PROJECTS);
 
-    // Simple drag simulation: click to move to next stage
     const cycleStatus = (id: string) => {
         setProjects(prev => prev.map(p => {
             if (p.id !== id) return p;
             if (p.status === 'planning') return { ...p, status: 'development' };
             if (p.status === 'development') return { ...p, status: 'done' };
-            if (p.status === 'done') return { ...p, status: 'planning' }; // Cycle back or archive
+            if (p.status === 'done') return { ...p, status: 'planning' }; 
             return p;
         }));
     };
@@ -283,7 +296,6 @@ const ProjectsView = () => {
 
 // --- FINANCE VIEW ---
 const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => {
-    // Calculate Weekly Summary
     const weeklySummary = useMemo(() => {
         const income = MOCK_TRANSACTIONS
             .filter(t => t.type === 'income')
@@ -293,7 +305,6 @@ const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => 
             .filter(t => t.type === 'expense')
             .reduce((acc, curr) => acc + curr.amount, 0);
 
-        // Group expenses by category
         const categories: Record<string, number> = {};
         MOCK_TRANSACTIONS
             .filter(t => t.type === 'expense')
@@ -322,15 +333,24 @@ const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => 
     };
 
     const handleAnalysisClick = () => {
-        const prompt = `Szia Gemini! Kérlek, elemezd a heti pénzügyeimet! Itt vannak az adatok:
-        - Összes bevétel: ${formatHUF(weeklySummary.income)}
-        - Összes kiadás: ${formatHUF(weeklySummary.expense)}
-        - Egyenleg: ${formatHUF(weeklySummary.balance)}
+        const prompt = `Kérlek végezz egy mélyreható pénzügyi elemzést a heti adataim alapján!
         
-        Kiadások kategóriánként:
-        ${weeklySummary.categories.map(c => `- ${c.name}: ${formatHUF(c.amount)}`).join('\n')}
-        
-        Kérlek, adj egy rövid összefoglalót és egy-két hasznos spórolási tanácsot!`;
+Összesített adatok:
+- Heti Bevétel: ${formatHUF(weeklySummary.income)}
+- Heti Kiadás: ${formatHUF(weeklySummary.expense)}
+- Aktuális Egyenleg: ${formatHUF(weeklySummary.balance)}
+
+Kiadási kategóriák lebontása:
+${weeklySummary.categories.map(c => `- ${c.name}: ${formatHUF(c.amount)} (${c.percentage.toFixed(1)}%)`).join('\n')}
+
+Legutóbbi tételek:
+${MOCK_TRANSACTIONS.filter(t => t.type === 'expense').slice(0, 5).map(t => `- ${t.title} (${t.category}): ${formatHUF(t.amount)}`).join('\n')}
+
+Feladatod:
+1. Azonosítsd a legnagyobb kiadási forrásokat.
+2. Csoportosítsd a költéseket "Létszükséglet" és "Kényelmi" kategóriákba.
+3. Javasolj 3 konkrét, forintban is kifejezhető spórolási tippet a mintázatok alapján.
+4. Adj egy rövid motiváló összegzést a heti egyenlegem állapota alapján.`;
         
         onAnalyze(prompt);
     };
@@ -339,14 +359,13 @@ const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => 
         <div className="view-container finance-view">
              <header className="view-header finance-header">
                 <h2>Pénzügyek</h2>
-                <button className="icon-btn" onClick={handleAnalysisClick} style={{width: 'auto', padding: '0 12px', fontSize: '13px', gap: '6px', background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.4)', color: '#fff'}}>
+                <button className="icon-btn ai-analysis-btn" onClick={handleAnalysisClick}>
                     <Icon name="smart_toy" className="material-symbols-outlined" style={{fontSize: '18px'}}/>
-                    AI Elemzés
+                    AI Pénzügyi Elemzés
                 </button>
             </header>
 
             <div className="finance-content custom-scrollbar">
-                {/* Total Balance Card */}
                 <div className="glass-panel finance-summary-card">
                     <div className="finance-summary">
                         <h3>Heti Egyenleg</h3>
@@ -356,7 +375,6 @@ const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => 
                     </div>
                 </div>
 
-                {/* Income / Expense Split */}
                 <div className="finance-grid" style={{marginTop: '20px'}}>
                     <div className="finance-card glass-panel">
                         <div className="card-icon success-bg">
@@ -378,7 +396,6 @@ const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => 
                     </div>
                 </div>
 
-                {/* Category Breakdown */}
                 <div className="section-title" style={{marginTop: '30px', marginBottom: '15px'}}>
                     <Icon name="chart" className="material-symbols-outlined" style={{marginRight:'8px'}}/> 
                     Kiadások Kategóriánként
@@ -407,15 +424,14 @@ const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => 
                     )}
                 </div>
 
-                {/* Recent Transactions List */}
                 <div className="section-title" style={{marginTop: '30px', marginBottom: '15px'}}>
                     <Icon name="category" className="material-symbols-outlined" style={{marginRight:'8px'}}/> 
                     Legutóbbi Tranzakciók
                 </div>
                 <div className="transactions-list" style={{paddingBottom: '20px'}}>
                     {MOCK_TRANSACTIONS.map(t => (
-                        <div key={t.id} className="transaction-item glass-panel" style={{display: 'flex', alignItems: 'center', padding: '12px', marginBottom: '8px'}}>
-                             <div className={`card-icon tiny ${t.type === 'income' ? 'success-bg' : 'danger-bg'}`} style={{width: '32px', height: '32px', fontSize: '14px', marginRight: '12px'}}>
+                        <div key={t.id} className="transaction-item glass-panel">
+                             <div className={`card-icon tiny ${t.type === 'income' ? 'success-bg' : 'danger-bg'}`}>
                                 {t.type === 'income' ? '+' : '-'}
                             </div>
                             <div style={{flex: 1}}>
@@ -439,16 +455,14 @@ const PlannerView = () => {
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [selectedEmail, setSelectedEmail] = useState<EmailItem | null>(null);
 
-    // Date Logic
     const getDays = () => {
         if (viewMode === 'month') {
             const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
             return Array.from({ length: daysInMonth }, (_, i) => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), i + 1));
         } else {
-            // Week mode: show current week Mon-Sun
             const curr = new Date(selectedDate);
             const currentDay = curr.getDay();
-            const diff = currentDay === 0 ? -6 : 1 - currentDay; // Adjust when day is sunday
+            const diff = currentDay === 0 ? -6 : 1 - currentDay; 
             const monday = new Date(curr.setDate(curr.getDate() + diff));
             
             return Array.from({ length: 7 }, (_, i) => {
@@ -463,11 +477,9 @@ const PlannerView = () => {
 
     const getFilteredEvents = () => {
         if (viewMode === 'month') {
-             // Show events for selectedDate
              const dateStr = selectedDate.toISOString().split('T')[0];
              return MOCK_EVENTS.filter(ev => ev.date === dateStr);
         } else {
-            // Show events for all displayed days (the week)
             const weekStr = days.map(d => d.toISOString().split('T')[0]);
             return MOCK_EVENTS.filter(ev => weekStr.includes(ev.date)).sort((a,b) => a.date.localeCompare(b.date));
         }
@@ -476,7 +488,6 @@ const PlannerView = () => {
     const displayEvents = getFilteredEvents();
 
     const handleDateSelect = (d: Date) => {
-        // Create new date to avoid mutation reference issues
         setSelectedDate(new Date(d));
     };
 
@@ -484,7 +495,7 @@ const PlannerView = () => {
         <div className="view-container planner-view">
             <header className="view-header">
                 <h2>Naptár & Gmail</h2>
-                <div className="filter-tabs" style={{marginBottom: 0, width: '160px'}}>
+                <div className="filter-tabs">
                     <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>Havi</button>
                     <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>Heti</button>
                 </div>
@@ -543,8 +554,8 @@ const PlannerView = () => {
                         </div>
                     ))
                 ) : (
-                    <div className="empty-state" style={{padding: '20px'}}>
-                        <p style={{margin:0}}>Nincs rögzített esemény erre az időszakra.</p>
+                    <div className="empty-state">
+                        <p>Nincs rögzített esemény erre az időszakra.</p>
                     </div>
                 )}
 
