@@ -1,644 +1,370 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { createRoot } from 'react-dom/client';
+import { GoogleGenAI, Modality, Type } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-// Type definitions
-type EmailItem = {
-    id: string;
-    sender: string;
-    subject: string;
-    time: string;
-    body: string;
-};
+// --- UTILS ---
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
-type Transaction = {
-    id: string;
-    title: string;
-    amount: number;
-    type: 'income' | 'expense';
-    category: string;
-    date: string;
-};
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
 
-type ProjectTask = {
-    id: string;
-    title: string;
-    description: string;
-    tag: string;
-    status: 'planning' | 'development' | 'done';
-};
-
-type ChatMessage = {
-    id: string;
-    role: 'user' | 'model';
-    text: string;
-};
-
-// Mock Data
-const MOCK_EVENTS = [
-    { id: '1', date: new Date().toISOString().split('T')[0], time: '09:00', title: 'Team Standup', type: 'work', status: 'completed' },
-    { id: '2', date: new Date().toISOString().split('T')[0], time: '14:30', title: 'Client Call', type: 'meeting', status: 'in-progress' },
-    { id: '3', date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: '10:00', title: 'Design Review', type: 'work', status: 'todo' },
-];
-
-const MOCK_EMAILS: EmailItem[] = [
-    { id: '1', sender: 'Alice Johnson', subject: 'Project Timeline Update', time: '10:15 AM', body: 'Hi team, the timeline has been updated. Please check the attachment.' },
-    { id: '2', sender: 'Bob Smith', subject: 'Lunch?', time: '12:30 PM', body: 'Hey, do you want to grab lunch at the usual place?' },
-    { id: '3', sender: 'Support', subject: 'Ticket #1234 Resolved', time: 'Yesterday', body: 'Your support ticket has been marked as resolved.' },
-];
-
-const MOCK_TRANSACTIONS: Transaction[] = [
-    { id: '1', title: 'Fizetés', amount: 450000, type: 'income', category: 'Bevétel', date: new Date().toISOString().split('T')[0] },
-    { id: '2', title: 'Nagybevásárlás', amount: 25000, type: 'expense', category: 'Élelmiszer', date: new Date().toISOString().split('T')[0] },
-    { id: '3', title: 'Benzin', amount: 18000, type: 'expense', category: 'Utazás', date: new Date(Date.now() - 86400000).toISOString().split('T')[0] },
-    { id: '4', title: 'Netflix', amount: 4500, type: 'expense', category: 'Szórakozás', date: new Date(Date.now() - 172800000).toISOString().split('T')[0] },
-    { id: '5', title: 'Villanyszámla', amount: 12000, type: 'expense', category: 'Rezsi', date: new Date(Date.now() - 259200000).toISOString().split('T')[0] },
-    { id: '6', title: 'Kávézó', amount: 3500, type: 'expense', category: 'Élelmiszer', date: new Date().toISOString().split('T')[0] },
-];
-
-const INITIAL_PROJECTS: ProjectTask[] = [
-    { id: '1', title: 'Weboldal Redesign', description: 'Új UI kit implementálása', tag: 'Frontend', status: 'development' },
-    { id: '2', title: 'Adatbázis Migráció', description: 'Átállás új struktúrára', tag: 'Backend', status: 'planning' },
-    { id: '3', title: 'Marketing Kampány', description: 'Q4 hirdetések előkészítése', tag: 'Marketing', status: 'done' },
-    { id: '4', title: 'Mobil App MVP', description: 'Alapfunkciók tesztelése', tag: 'Mobile', status: 'planning' },
-];
-
-// Helper Components
-const Icon = ({ name, style, className }: { name: string; style?: React.CSSProperties, className?: string }) => {
-    const isMaterial = className?.includes('material-symbols-outlined');
-    
-    if (isMaterial) {
-        return <span className={className} style={style}>{name}</span>;
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
     }
+  }
+  return buffer;
+}
 
-    const iconMap: Record<string, string> = {
-        mail: '📧',
-        calendar: '📅',
-        finance: '💰',
-        chart: '📊',
-        trending_up: '📈',
-        trending_down: '📉',
-        category: '🏷️',
-        send: '➤',
-        smart_toy: '🤖',
-        view_kanban: '📋'
-    };
-    return <span className={className} style={style}>{iconMap[name] || '•'}</span>;
-};
+// --- TYPES ---
+type ChatMessage = { id: string; role: 'user' | 'model'; text: string; isLive?: boolean; grounding?: any[] };
+type AspectRatio = "1:1" | "2:3" | "3:2" | "3:4" | "4:3" | "9:16" | "16:9" | "21:9";
 
-const EmailDetailModal = ({ email, onClose }: { email: EmailItem; onClose: () => void }) => {
-    return (
-        <div className="modal-overlay" style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-            backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, 
-            display: 'flex', justifyContent: 'center', alignItems: 'center'
-        }} onClick={onClose}>
-            <div className="modal-content glass-panel" style={{
-                background: '#fff', padding: '20px', borderRadius: '8px', 
-                maxWidth: '500px', width: '90%', color: '#333'
-            }} onClick={e => e.stopPropagation()}>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '10px'}}>
-                    <h3>{email.subject}</h3>
-                    <button onClick={onClose} style={{cursor: 'pointer', border: 'none', background: 'transparent', fontSize: '1.2rem'}}>×</button>
-                </div>
-                <div style={{marginBottom: '15px', fontSize: '0.9rem', color: '#666'}}>
-                    <div><strong>From:</strong> {email.sender}</div>
-                    <div><strong>Time:</strong> {email.time}</div>
-                </div>
-                <div className="email-body">
-                    {email.body}
-                </div>
-            </div>
+// --- MOCK DATA ---
+const MOCK_TRANSACTIONS = [
+    { id: '1', title: 'Fizetés', amount: 450000, type: 'income', category: 'Bevétel', date: '2024-05-01' },
+    { id: '2', title: 'Nagybevásárlás', amount: 25000, type: 'expense', category: 'Élelmiszer', date: '2024-05-02' },
+    { id: '3', title: 'Kávézó', amount: 3500, type: 'expense', category: 'Élelmiszer', date: '2024-05-02' },
+];
+
+// --- COMPONENTS ---
+// Added style prop to Icon component to fix the error on line 306
+const Icon = ({ name, className, style }: { name: string; className?: string; style?: React.CSSProperties }) => (
+  <span className={`material-symbols-outlined ${className || ''}`} style={style}>{name}</span>
+);
+
+// --- CREATIVE VIEW (IMAGE GEN) ---
+const CreativeView = () => {
+  const [prompt, setPrompt] = useState('');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+
+  const generateImage = async () => {
+    if (!prompt.trim()) return;
+    setIsGenerating(true);
+    try {
+      const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+          await (window as any).aistudio.openSelectKey();
+      }
+
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: { parts: [{ text: prompt }] },
+        config: { imageConfig: { aspectRatio, imageSize: "1K" } }
+      });
+
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          setGeneratedImageUrl(`data:image/png;base64,${part.inlineData.data}`);
+          break;
+        }
+      }
+    } catch (e: any) {
+      console.error(e);
+      if (e.message?.includes("Requested entity was not found")) {
+          await (window as any).aistudio.openSelectKey();
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <div className="view-container creative-view">
+      <header className="view-header">
+        <h2>Kreatív Stúdió</h2>
+        <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" style={{fontSize: '10px', color: 'var(--text-muted)'}}>Billing Info</a>
+      </header>
+      
+      <div className="glass-panel" style={{marginBottom: '20px'}}>
+        <textarea 
+          placeholder="Írd le a képet, amit szeretnél generálni..." 
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          style={{width: '100%', background: 'transparent', border: 'none', color: 'white', minHeight: '80px', outline: 'none', resize: 'none'}}
+        />
+        <div className="aspect-ratio-selector">
+          {(["1:1", "3:4", "4:3", "9:16", "16:9"] as AspectRatio[]).map(ratio => (
+            <button key={ratio} className={aspectRatio === ratio ? 'active' : ''} onClick={() => setAspectRatio(ratio)}>{ratio}</button>
+          ))}
         </div>
-    );
+        <button className="ai-analysis-btn" style={{width: '100%', marginTop: '15px'}} onClick={generateImage} disabled={isGenerating}>
+          {isGenerating ? 'Generálás...' : 'Kép Létrehozása'}
+        </button>
+      </div>
+
+      {generatedImageUrl && (
+        <div className="glass-panel" style={{padding: '10px', display: 'flex', justifyContent: 'center'}}>
+          <img src={generatedImageUrl} alt="Generated" style={{maxWidth: '100%', borderRadius: '12px'}} />
+        </div>
+      )}
+    </div>
+  );
 };
 
 // --- AI ASSISTANT VIEW ---
-interface AiAssistantViewProps {
-    initialPrompt?: string | null;
-    onPromptHandled?: () => void;
-}
+const AiAssistantView = ({ initialPrompt, onPromptHandled }: { initialPrompt?: string | null, onPromptHandled?: () => void }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([{ id: '0', role: 'model', text: 'Szia! Miben segíthetek?' }]);
+  const [inputText, setInputText] = useState('');
+  const [isLive, setIsLive] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Audio Refs
+  const outCtxRef = useRef<AudioContext | null>(null);
+  const nextStartTimeRef = useRef(0);
+  const sourcesRef = useRef(new Set<AudioBufferSourceNode>());
 
-const AiAssistantView = ({ initialPrompt, onPromptHandled }: AiAssistantViewProps) => {
-    const [messages, setMessages] = useState<ChatMessage[]>([
-        { id: '0', role: 'model', text: 'Szia! A HeR WiNnEr asszisztense vagyok. Miben segíthetek ma?' }
-    ]);
-    const [inputText, setInputText] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const hasHandledInitialPrompt = useRef(false);
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  useEffect(() => scrollToBottom(), [messages]);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
+  const speakText = async (text: string) => {
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Say clearly: ${text}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+        },
+      });
+      
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const ctx = outCtxRef.current || new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
+        outCtxRef.current = ctx;
+        const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.start();
+      }
+    } catch (e) { console.error("TTS Error", e); }
+  };
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    const sendMessage = async (text: string) => {
-        if (!text.trim() || isLoading) return;
-
-        const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text: text };
-        setMessages(prev => [...prev, userMsg]);
-        setInputText('');
-        setIsLoading(true);
-
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const chat = ai.chats.create({
-                model: 'gemini-3-flash-preview',
-                config: {
-                    systemInstruction: `You are a high-end personal financial coach and productivity expert for the 'HeR WiNnEr' ecosystem. 
-                    You speak Hungarian naturally. When analyzing finances:
-                    1. Be concise but insightful.
-                    2. Categorize expenses into 'Essential' vs 'Discretionary'.
-                    3. Highlight the largest spending category.
-                    4. Provide 3 highly specific, actionable saving tips (e.g., 'Cook more at home' is generic, 'Try to limit cafes to twice a week to save 7,000 HUF' is better).
-                    5. Use markdown for readability (bolding, lists, tables).`
-                }
-            });
-
-            let fullResponseText = '';
-            const resultStream = await chat.sendMessageStream({ message: userMsg.text });
-            
-            const aiMsgId = (Date.now() + 1).toString();
-            setMessages(prev => [...prev, { id: aiMsgId, role: 'model', text: '' }]);
-
-            for await (const chunk of resultStream) {
-                const textChunk = chunk.text;
-                fullResponseText += textChunk;
-                setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: fullResponseText } : m));
-            }
-
-        } catch (error) {
-            console.error("AI Error:", error);
-            setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: 'Elnézést, hiba történt a válaszadás közben.' }]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (initialPrompt && !hasHandledInitialPrompt.current) {
-            hasHandledInitialPrompt.current = true;
-            sendMessage(initialPrompt);
-            if (onPromptHandled) onPromptHandled();
-        }
-    }, [initialPrompt, onPromptHandled]);
-
-    useEffect(() => {
-        if (!initialPrompt) {
-            hasHandledInitialPrompt.current = false;
-        }
-    }, [initialPrompt]);
-
-    return (
-        <div className="view-container chat-view">
-             <header className="view-header">
-                <h2>AI Asszisztens</h2>
-                <div className="status-indicator online">Online</div>
-            </header>
-
-            <div className="chat-messages custom-scrollbar">
-                {messages.map((msg) => (
-                    <div key={msg.id} className={`chat-bubble ${msg.role}`}>
-                        <div className="bubble-content">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {msg.text}
-                            </ReactMarkdown>
-                        </div>
-                    </div>
-                ))}
-                {isLoading && (
-                    <div className="chat-bubble model">
-                        <div className="bubble-content">
-                            <div className="typing-indicator">
-                                <span></span><span></span><span></span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-                <div ref={messagesEndRef} />
-            </div>
-
-            <div className="chat-input-area glass-panel">
-                <input 
-                    type="text" 
-                    placeholder="Írj egy üzenetet..." 
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)}
-                    disabled={isLoading}
-                />
-                <button onClick={() => sendMessage(inputText)} disabled={isLoading || !inputText.trim()} className="send-btn">
-                    <Icon name="send" className="material-symbols-outlined" />
-                </button>
-            </div>
-        </div>
-    );
-};
-
-// --- PROJECTS VIEW (KANBAN) ---
-const ProjectsView = () => {
-    const [projects, setProjects] = useState<ProjectTask[]>(INITIAL_PROJECTS);
-
-    const cycleStatus = (id: string) => {
-        setProjects(prev => prev.map(p => {
-            if (p.id !== id) return p;
-            if (p.status === 'planning') return { ...p, status: 'development' };
-            if (p.status === 'development') return { ...p, status: 'done' };
-            if (p.status === 'done') return { ...p, status: 'planning' }; 
-            return p;
-        }));
-    };
-
-    const columns = [
-        { id: 'planning', label: 'Tervezés', color: 'var(--warning)' },
-        { id: 'development', label: 'Folyamatban', color: 'var(--secondary)' },
-        { id: 'done', label: 'Kész', color: 'var(--success)' }
-    ];
-
-    return (
-        <div className="view-container projects-view">
-             <header className="view-header">
-                <h2>Projektek</h2>
-                <button className="icon-btn"><span style={{fontSize: '20px'}}>+</span></button>
-            </header>
-            
-            <div className="kanban-board custom-scrollbar">
-                {columns.map(col => {
-                    const colProjects = projects.filter(p => p.status === col.id);
-                    return (
-                        <div key={col.id} className="kanban-column glass-panel">
-                            <div className="column-header" style={{borderBottomColor: col.color}}>
-                                <span>{col.label}</span>
-                                <span className="count-badge">{colProjects.length}</span>
-                            </div>
-                            <div className="column-content">
-                                {colProjects.map(p => (
-                                    <div key={p.id} className="project-card" onClick={() => cycleStatus(p.id)}>
-                                        <div className="project-tag">{p.tag}</div>
-                                        <h4>{p.title}</h4>
-                                        <p>{p.description}</p>
-                                    </div>
-                                ))}
-                                {colProjects.length === 0 && <div className="empty-col">Üres</div>}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-// --- FINANCE VIEW ---
-const FinanceView = ({ onAnalyze }: { onAnalyze: (prompt: string) => void }) => {
-    const weeklySummary = useMemo(() => {
-        const income = MOCK_TRANSACTIONS
-            .filter(t => t.type === 'income')
-            .reduce((acc, curr) => acc + curr.amount, 0);
-            
-        const expense = MOCK_TRANSACTIONS
-            .filter(t => t.type === 'expense')
-            .reduce((acc, curr) => acc + curr.amount, 0);
-
-        const categories: Record<string, number> = {};
-        MOCK_TRANSACTIONS
-            .filter(t => t.type === 'expense')
-            .forEach(t => {
-                categories[t.category] = (categories[t.category] || 0) + t.amount;
-            });
-
-        const sortedCategories = Object.entries(categories)
-            .sort(([, a], [, b]) => b - a)
-            .map(([name, amount]) => ({
-                name,
-                amount,
-                percentage: expense > 0 ? (amount / expense) * 100 : 0
-            }));
-
-        return {
-            income,
-            expense,
-            balance: income - expense,
-            categories: sortedCategories
-        };
-    }, []);
-
-    const formatHUF = (amount: number) => {
-        return new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(amount);
-    };
-
-    const handleAnalysisClick = () => {
-        const prompt = `Kérlek végezz egy mélyreható pénzügyi elemzést a heti adataim alapján!
+  const handleNearbySearch = async () => {
+    setIsLoading(true);
+    try {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: "Milyen érdekes helyek vannak a közelemben? Adj tippeket és linkeket.",
+          config: {
+            tools: [{ googleMaps: {} }],
+            toolConfig: { retrievalConfig: { latLng: { latitude: pos.coords.latitude, longitude: pos.coords.longitude } } }
+          },
+        });
         
-Összesített adatok:
-- Heti Bevétel: ${formatHUF(weeklySummary.income)}
-- Heti Kiadás: ${formatHUF(weeklySummary.expense)}
-- Aktuális Egyenleg: ${formatHUF(weeklySummary.balance)}
+        const text = response.text || "Nem találtam semmit a közeledben.";
+        const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text, grounding }]);
+        setIsLoading(false);
+      });
+    } catch (e) {
+      console.error(e);
+      setIsLoading(false);
+    }
+  };
 
-Kiadási kategóriák lebontása:
-${weeklySummary.categories.map(c => `- ${c.name}: ${formatHUF(c.amount)} (${c.percentage.toFixed(1)}%)`).join('\n')}
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || isLoading) return;
+    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text };
+    setMessages(prev => [...prev, userMsg]);
+    setInputText('');
+    setIsLoading(true);
 
-Legutóbbi tételek:
-${MOCK_TRANSACTIONS.filter(t => t.type === 'expense').slice(0, 5).map(t => `- ${t.title} (${t.category}): ${formatHUF(t.amount)}`).join('\n')}
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        // Updated model name to gemini-3-flash-preview following guidelines for basic text tasks
+        model: 'gemini-3-flash-preview',
+        contents: text,
+        config: { systemInstruction: "Szia! Te egy profi magyar nyelvű asszisztens vagy." }
+      });
+      const aiMsg: ChatMessage = { id: (Date.now() + 1).toString(), role: 'model', text: response.text || '' };
+      setMessages(prev => [...prev, aiMsg]);
+    } catch (e) {
+      setMessages(prev => [...prev, { id: 'err', role: 'model', text: 'Hiba történt.' }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-Feladatod:
-1. Azonosítsd a legnagyobb kiadási forrásokat.
-2. Csoportosítsd a költéseket "Létszükséglet" és "Kényelmi" kategóriákba.
-3. Javasolj 3 konkrét, forintban is kifejezhető spórolási tippet a mintázatok alapján.
-4. Adj egy rövid motiváló összegzést a heti egyenlegem állapota alapján.`;
-        
-        onAnalyze(prompt);
-    };
-
-    return (
-        <div className="view-container finance-view">
-             <header className="view-header finance-header">
-                <h2>Pénzügyek</h2>
-                <button className="icon-btn ai-analysis-btn" onClick={handleAnalysisClick}>
-                    <Icon name="smart_toy" className="material-symbols-outlined" style={{fontSize: '18px'}}/>
-                    AI Pénzügyi Elemzés
-                </button>
-            </header>
-
-            <div className="finance-content custom-scrollbar">
-                <div className="glass-panel finance-summary-card">
-                    <div className="finance-summary">
-                        <h3>Heti Egyenleg</h3>
-                        <div className={`big-number ${weeklySummary.balance >= 0 ? 'positive' : 'negative'}`}>
-                            {formatHUF(weeklySummary.balance)}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="finance-grid" style={{marginTop: '20px'}}>
-                    <div className="finance-card glass-panel">
-                        <div className="card-icon success-bg">
-                            <Icon name="trending_up" className="material-symbols-outlined" />
-                        </div>
-                        <div className="card-info">
-                            <span className="label">Bevétel</span>
-                            <span className="amount success-text">{formatHUF(weeklySummary.income)}</span>
-                        </div>
-                    </div>
-                    <div className="finance-card glass-panel">
-                        <div className="card-icon danger-bg">
-                            <Icon name="trending_down" className="material-symbols-outlined" />
-                        </div>
-                        <div className="card-info">
-                            <span className="label">Kiadás</span>
-                            <span className="amount danger-text">{formatHUF(weeklySummary.expense)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="section-title" style={{marginTop: '30px', marginBottom: '15px'}}>
-                    <Icon name="chart" className="material-symbols-outlined" style={{marginRight:'8px'}}/> 
-                    Kiadások Kategóriánként
-                </div>
-                
-                <div className="glass-panel" style={{padding: '20px'}}>
-                    {weeklySummary.categories.length > 0 ? (
-                        <div className="category-list">
-                            {weeklySummary.categories.map((cat, idx) => (
-                                <div key={idx} className="cat-visual-row">
-                                    <div className="cat-header">
-                                        <span className="cat-name">{cat.name}</span>
-                                        <span className="cat-amount">{formatHUF(cat.amount)}</span>
-                                    </div>
-                                    <div className="cat-bar-bg">
-                                        <div 
-                                            className="cat-bar-fill" 
-                                            style={{width: `${cat.percentage}%`, backgroundColor: `hsl(${200 + (idx * 40)}, 70%, 60%)`}}
-                                        ></div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="empty-state">Nincs kiadás ezen a héten.</div>
-                    )}
-                </div>
-
-                <div className="section-title" style={{marginTop: '30px', marginBottom: '15px'}}>
-                    <Icon name="category" className="material-symbols-outlined" style={{marginRight:'8px'}}/> 
-                    Legutóbbi Tranzakciók
-                </div>
-                <div className="transactions-list" style={{paddingBottom: '20px'}}>
-                    {MOCK_TRANSACTIONS.map(t => (
-                        <div key={t.id} className="transaction-item glass-panel">
-                             <div className={`card-icon tiny ${t.type === 'income' ? 'success-bg' : 'danger-bg'}`}>
-                                {t.type === 'income' ? '+' : '-'}
-                            </div>
-                            <div style={{flex: 1}}>
-                                <div style={{fontWeight: 600, fontSize: '14px'}}>{t.title}</div>
-                                <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>{t.category} • {t.date}</div>
-                            </div>
-                            <div style={{fontWeight: 700, fontSize: '14px', color: t.type === 'income' ? 'var(--success)' : 'var(--text-main)'}}>
-                                {t.type === 'income' ? '+' : ''}{formatHUF(t.amount)}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- PLANNER VIEW ---
-const PlannerView = () => {
-    const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
-    const [selectedDate, setSelectedDate] = useState(new Date());
-    const [selectedEmail, setSelectedEmail] = useState<EmailItem | null>(null);
-
-    const getDays = () => {
-        if (viewMode === 'month') {
-            const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
-            return Array.from({ length: daysInMonth }, (_, i) => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), i + 1));
-        } else {
-            const curr = new Date(selectedDate);
-            const currentDay = curr.getDay();
-            const diff = currentDay === 0 ? -6 : 1 - currentDay; 
-            const monday = new Date(curr.setDate(curr.getDate() + diff));
-            
-            return Array.from({ length: 7 }, (_, i) => {
-                 const d = new Date(monday);
-                 d.setDate(monday.getDate() + i);
-                 return d;
-            });
-        }
-    };
+  // --- LIVE AUDIO ---
+  const toggleLive = async () => {
+    if (isLive) {
+      setIsLive(false);
+      return;
+    }
     
-    const days = getDays();
+    setIsLive(true);
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const inCtx = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 16000});
+    const outCtx = outCtxRef.current || new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
+    outCtxRef.current = outCtx;
 
-    const getFilteredEvents = () => {
-        if (viewMode === 'month') {
-             const dateStr = selectedDate.toISOString().split('T')[0];
-             return MOCK_EVENTS.filter(ev => ev.date === dateStr);
-        } else {
-            const weekStr = days.map(d => d.toISOString().split('T')[0]);
-            return MOCK_EVENTS.filter(ev => weekStr.includes(ev.date)).sort((a,b) => a.date.localeCompare(b.date));
-        }
-    };
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+    const sessionPromise = ai.live.connect({
+      model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+      callbacks: {
+        onopen: () => {
+          const source = inCtx.createMediaStreamSource(stream);
+          const scriptProcessor = inCtx.createScriptProcessor(4096, 1, 1);
+          scriptProcessor.onaudioprocess = (e) => {
+            const inputData = e.inputBuffer.getChannelData(0);
+            const int16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
+            const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
+            // Ensure data is sent only after session promise resolves
+            sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
+          };
+          source.connect(scriptProcessor);
+          scriptProcessor.connect(inCtx.destination);
+        },
+        onmessage: async (msg) => {
+          const base64 = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+          if (base64) {
+            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outCtx.currentTime);
+            const buffer = await decodeAudioData(decode(base64), outCtx, 24000, 1);
+            const source = outCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(outCtx.destination);
+            source.start(nextStartTimeRef.current);
+            nextStartTimeRef.current += buffer.duration;
+            sourcesRef.current.add(source);
+          }
+          if (msg.serverContent?.interrupted) {
+            sourcesRef.current.forEach(s => s.stop());
+            sourcesRef.current.clear();
+            nextStartTimeRef.current = 0;
+          }
+        },
+        onclose: () => setIsLive(false),
+        onerror: () => setIsLive(false)
+      },
+      config: { 
+        responseModalities: [Modality.AUDIO],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } }
+      }
+    });
+  };
 
-    const displayEvents = getFilteredEvents();
-
-    const handleDateSelect = (d: Date) => {
-        setSelectedDate(new Date(d));
-    };
-
-    return (
-        <div className="view-container planner-view">
-            <header className="view-header">
-                <h2>Naptár & Gmail</h2>
-                <div className="filter-tabs">
-                    <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>Havi</button>
-                    <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>Heti</button>
-                </div>
-            </header>
-
-            <div className="calendar-strip">
-                <div className="month-label">
-                    {selectedDate.toLocaleString('hu-HU', { month: 'long', year: 'numeric' })}
-                    {viewMode === 'week' && ' (Heti Nézet)'}
-                </div>
-                <div className="days-scroller hide-scrollbar">
-                    {days.map(d => {
-                        const isSelected = d.getDate() === selectedDate.getDate() && d.getMonth() === selectedDate.getMonth();
-                        const isToday = d.toDateString() === new Date().toDateString();
-                        return (
-                            <div 
-                                key={d.toISOString()} 
-                                className={`day-chip ${isSelected ? 'active' : ''} ${isToday ? 'today' : ''}`}
-                                onClick={() => handleDateSelect(d)}
-                            >
-                                <span className="day-name">{d.toLocaleDateString('hu-HU', { weekday: 'short' }).charAt(0)}</span>
-                                <span className="num">{d.getDate()}</span>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            <div className="planner-content custom-scrollbar">
-                <div className="section-title">
-                    {viewMode === 'month' 
-                        ? `Teendők: ${selectedDate.toLocaleDateString('hu-HU', {month: 'long', day: 'numeric'})}`
-                        : "Heti Teendők Áttekintése"
-                    }
-                </div>
-                
-                {displayEvents.length > 0 ? (
-                    displayEvents.map((ev: any) => (
-                        <div key={ev.id} className="event-card glass-panel">
-                            {viewMode === 'week' && (
-                                <div className="weekly-group">
-                                    <span className="group-date">{ev.date}</span>
-                                </div>
-                            )}
-                            <div className={`event-strip ${ev.type}`}></div>
-                            <div className="event-time">{ev.time || 'Egész nap'}</div>
-                            <div className="event-details">
-                                <h4 className={ev.status === 'completed' ? 'completed-task' : ''}>{ev.title}</h4>
-                                <div className="event-meta-row">
-                                    <span className="tag">{ev.type}</span>
-                                    <span className={`status-pill ${ev.status || 'todo'}`}>
-                                        {ev.status === 'completed' ? 'Kész' : ev.status === 'in-progress' ? 'Folyamatban' : 'Teendő'}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    ))
-                ) : (
-                    <div className="empty-state">
-                        <p>Nincs rögzített esemény erre az időszakra.</p>
-                    </div>
-                )}
-
-                <div className="section-title" style={{marginTop: '24px'}}>
-                    <Icon name="mail" className="material-symbols-outlined" style={{marginRight:'8px', fontSize:'18px'}}/> 
-                    Beérkezett Levelek (Gmail)
-                </div>
-                <div className="email-preview glass-panel">
-                    {MOCK_EMAILS.map(email => (
-                         <div key={email.id} className="email-row clickable" onClick={() => setSelectedEmail(email)}>
-                            <div className="sender">{email.sender}</div>
-                            <div className="subject">{email.subject}</div>
-                            <div className="date">{email.time}</div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-            
-            {selectedEmail && (
-                <EmailDetailModal email={selectedEmail} onClose={() => setSelectedEmail(null)} />
-            )}
+  return (
+    <div className="view-container chat-view">
+      <header className="view-header">
+        <h2>Asszisztens</h2>
+        <div style={{display: 'flex', gap: '10px'}}>
+           <button className={`icon-btn ${isLive ? 'live-active' : ''}`} onClick={toggleLive}>
+              <Icon name={isLive ? "mic" : "mic_off"} />
+           </button>
+           <button className="icon-btn" onClick={handleNearbySearch}>
+              <Icon name="explore" />
+           </button>
         </div>
-    );
+      </header>
+
+      <div className="chat-messages custom-scrollbar">
+        {messages.map(msg => (
+          <div key={msg.id} className={`chat-bubble ${msg.role}`}>
+            <div className="bubble-content">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+              {msg.grounding && (
+                <div className="grounding-links">
+                  {msg.grounding.map((chunk, i) => chunk.web ? (
+                    <a key={i} href={chunk.web.uri} target="_blank">{chunk.web.title}</a>
+                  ) : chunk.maps ? (
+                    <a key={i} href={chunk.maps.uri} target="_blank">{chunk.maps.title}</a>
+                  ) : null)}
+                </div>
+              )}
+              {msg.role === 'model' && (
+                <button className="tts-btn" onClick={() => speakText(msg.text)}>
+                  <Icon name="volume_up" style={{fontSize: '14px'}} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {isLoading && <div className="typing-indicator"><span></span><span></span><span></span></div>}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="chat-input-area glass-panel">
+        <input 
+          placeholder="Kérdezz bármit..." 
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)}
+        />
+        <button onClick={() => sendMessage(inputText)} className="send-btn">
+          <Icon name="send" />
+        </button>
+      </div>
+    </div>
+  );
 };
 
-// --- MAIN APP SHELL ---
+// --- MAIN APP ---
 const App = () => {
-    const [currentView, setCurrentView] = useState<'planner' | 'finance' | 'projects' | 'ai'>('ai');
-    const [pendingAiPrompt, setPendingAiPrompt] = useState<string | null>(null);
-
-    const handleAiAnalysis = (prompt: string) => {
-        setPendingAiPrompt(prompt);
-        setCurrentView('ai');
-    };
-
-    const renderView = () => {
-        switch(currentView) {
-            case 'planner': return <PlannerView />;
-            case 'finance': return <FinanceView onAnalyze={handleAiAnalysis} />;
-            case 'projects': return <ProjectsView />;
-            case 'ai': return <AiAssistantView initialPrompt={pendingAiPrompt} onPromptHandled={() => setPendingAiPrompt(null)} />;
-            default: return <AiAssistantView />;
-        }
-    };
+    const [view, setView] = useState<'planner' | 'finance' | 'creative' | 'ai'>('ai');
 
     return (
         <div className="app-shell">
             <div className="content-area">
-                {renderView()}
+                {view === 'planner' && <div className="view-container"><h2>Naptár</h2><p>Hamarosan...</p></div>}
+                {view === 'finance' && <div className="view-container"><h2>Pénzügyek</h2><p>Hamarosan...</p></div>}
+                {view === 'creative' && <CreativeView />}
+                {view === 'ai' && <AiAssistantView />}
             </div>
             
             <nav className="bottom-nav">
-                <button 
-                    className={`nav-item ${currentView === 'planner' ? 'active' : ''}`}
-                    onClick={() => setCurrentView('planner')}
-                >
-                    <Icon name="calendar_month" className="material-symbols-outlined" />
-                    <span>Naptár</span>
+                <button className={`nav-item ${view === 'planner' ? 'active' : ''}`} onClick={() => setView('planner')}>
+                    <Icon name="calendar_month" /><span>Naptár</span>
                 </button>
-                 <button 
-                    className={`nav-item ${currentView === 'projects' ? 'active' : ''}`}
-                    onClick={() => setCurrentView('projects')}
-                >
-                    <Icon name="view_kanban" className="material-symbols-outlined" />
-                    <span>Projektek</span>
+                <button className={`nav-item ${view === 'creative' ? 'active' : ''}`} onClick={() => setView('creative')}>
+                    <Icon name="palette" /><span>Kreatív</span>
                 </button>
-                 <button 
-                    className={`nav-item ${currentView === 'ai' ? 'active' : ''}`}
-                    onClick={() => setCurrentView('ai')}
-                >
-                    <Icon name="smart_toy" className="material-symbols-outlined" />
-                    <span>Gemini</span>
+                <button className={`nav-item ${view === 'ai' ? 'active' : ''}`} onClick={() => setView('ai')}>
+                    <Icon name="smart_toy" /><span>Gemini</span>
                 </button>
-                <button 
-                    className={`nav-item ${currentView === 'finance' ? 'active' : ''}`}
-                    onClick={() => setCurrentView('finance')}
-                >
-                    <Icon name="account_balance_wallet" className="material-symbols-outlined" />
-                    <span>Pénzügy</span>
+                <button className={`nav-item ${view === 'finance' ? 'active' : ''}`} onClick={() => setView('finance')}>
+                    <Icon name="account_balance_wallet" /><span>Pénzügy</span>
                 </button>
             </nav>
         </div>
     );
 };
 
-export default App;
+// --- RENDER ---
+const root = document.getElementById('root');
+if (root) {
+  createRoot(root).render(<App />);
+}
