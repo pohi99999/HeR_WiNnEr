@@ -31,9 +31,10 @@ body {
     padding: 15px 20px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
     background: linear-gradient(to bottom, rgba(139, 92, 246, 0.1), transparent);
 }
+.brand-main { display: flex; align-items: center; gap: 8px; }
 .brand-text {
     font-weight: 800;
     font-size: 20px;
@@ -49,6 +50,53 @@ body {
     border-radius: 50%;
     box-shadow: 0 0 10px var(--primary);
 }
+
+.connectivity-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.connectivity-tag.online { color: var(--success); background: rgba(16, 185, 129, 0.1); }
+.connectivity-tag.offline { color: var(--secondary); background: rgba(6, 182, 212, 0.1); }
+
+/* OFFLINE STATES */
+.offline-dim { opacity: 0.6; pointer-events: none; filter: grayscale(0.5); }
+.offline-banner {
+    padding: 12px;
+    margin: 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--secondary);
+    font-size: 12px;
+    border: 1px dashed var(--secondary);
+}
+
+.sync-toast {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1100;
+    background: var(--bg-dark);
+    border: 1px solid var(--primary);
+    padding: 8px 16px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+.spin { animation: spin 2s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* HEALTH SCORE CHART */
 .health-score-container {

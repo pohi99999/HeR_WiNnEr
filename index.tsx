@@ -67,10 +67,16 @@ const Icon = ({ name, className, style }: { name: string; className?: string; st
   <span className={`material-symbols-outlined ${className || ''}`} style={style}>{name}</span>
 );
 
-const BrandHeader = () => (
+const BrandHeader = ({ isOnline }: { isOnline: boolean }) => (
     <div className="brand-header">
-        <span className="brand-text">HeR WiNnEr</span>
-        <div className="brand-dot"></div>
+        <div className="brand-main">
+            <span className="brand-text">HeR WiNnEr</span>
+            <div className="brand-dot"></div>
+        </div>
+        <div className={`connectivity-tag ${isOnline ? 'online' : 'offline'}`}>
+            <Icon name={isOnline ? "cloud_done" : "cloud_off"} style={{ fontSize: '14px' }} />
+            <span>{isOnline ? 'Online' : 'Offline Mode'}</span>
+        </div>
     </div>
 );
 
@@ -148,7 +154,7 @@ const EditRecordModal = ({ record, onSave, onDelete, onClose }: {
 };
 
 // --- DASHBOARD VIEW ---
-const DashboardView = ({ records }: { records: FinancialRecord[] }) => {
+const DashboardView = ({ records, isOnline }: { records: FinancialRecord[], isOnline: boolean }) => {
     const [analysis, setAnalysis] = useState<string>('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const formatCurrency = (val: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(val);
@@ -159,6 +165,7 @@ const DashboardView = ({ records }: { records: FinancialRecord[] }) => {
     const healthScore = Math.max(0, Math.min(100, Math.round(savingsRate + 50)));
 
     const requestAiAnalysis = async () => {
+        if (!isOnline) return;
         setIsAnalyzing(true);
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -207,14 +214,18 @@ const DashboardView = ({ records }: { records: FinancialRecord[] }) => {
                 </div>
             </div>
 
-            <div className="ai-insights-section glass-panel">
+            <div className={`ai-insights-section glass-panel ${!isOnline ? 'offline-dim' : ''}`}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                     <span className="section-title">AI Pénzügyi Elemzés</span>
-                    <button className="icon-btn" onClick={requestAiAnalysis} disabled={isAnalyzing}>
-                        <Icon name="auto_awesome" style={{ color: isAnalyzing ? 'var(--text-muted)' : 'var(--secondary)' }} />
+                    <button className="icon-btn" onClick={requestAiAnalysis} disabled={isAnalyzing || !isOnline}>
+                        <Icon name={isOnline ? "auto_awesome" : "wifi_off"} style={{ color: !isOnline ? 'var(--danger)' : isAnalyzing ? 'var(--text-muted)' : 'var(--secondary)' }} />
                     </button>
                 </div>
-                {isAnalyzing ? (
+                {!isOnline ? (
+                    <p style={{ fontSize: '13px', color: 'var(--danger)', margin: 0, textAlign: 'center' }}>
+                        Az AI elemzéshez internetkapcsolat szükséges.
+                    </p>
+                ) : isAnalyzing ? (
                     <div className="typing-indicator"><span></span><span></span><span></span></div>
                 ) : analysis ? (
                     <div className="analysis-text fade-in">
@@ -231,11 +242,12 @@ const DashboardView = ({ records }: { records: FinancialRecord[] }) => {
 };
 
 // --- LEDGER / NOTES VIEW ---
-const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord }: { 
+const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnline }: { 
     records: FinancialRecord[], 
     onAddRecord: (r: FinancialRecord) => void,
     onUpdateRecord: (r: FinancialRecord) => void,
-    onDeleteRecord: (id: string) => void
+    onDeleteRecord: (id: string) => void,
+    isOnline: boolean
 }) => {
     const [search, setSearch] = useState('');
     const [editingRecord, setEditingRecord] = useState<FinancialRecord | null>(null);
@@ -264,7 +276,10 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord }: {
     return (
         <div className="view-container">
             <header className="view-header">
-                <h2>Pénzügyi Napló</h2>
+                <div>
+                    <h2>Pénzügyi Napló</h2>
+                    {!isOnline && <span style={{ fontSize: '10px', color: 'var(--secondary)' }}>Helyi mentés aktív</span>}
+                </div>
                 <div className={`mini-balance ${balance >= 0 ? 'pos' : 'neg'}`}>{formatCurrency(balance)}</div>
             </header>
 
@@ -351,7 +366,7 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord }: {
 };
 
 // --- AI ASSISTANT VIEW (WITH LIVE AUDIO) ---
-const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) => void }) => {
+const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: FinancialRecord) => void, isOnline: boolean }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([{ id: '0', role: 'model', text: 'Szia! HeR vagyok. Miben segíthetek a pénzügyeidben?' }]);
   const [inputText, setInputText] = useState('');
   const [isLive, setIsLive] = useState(false);
@@ -369,6 +384,12 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
 
   useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
 
+  useEffect(() => {
+    if (!isOnline && isLive) {
+        setIsLive(false);
+    }
+  }, [isOnline]);
+
   const addRecordTool: FunctionDeclaration = {
     name: 'add_financial_record',
     parameters: {
@@ -385,6 +406,7 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
   };
 
   const speakText = async (text: string) => {
+    if (!isOnline) return;
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
@@ -434,6 +456,7 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
   };
 
   const toggleLive = async () => {
+    if (!isOnline) return;
     if (isLive) {
       setIsLive(false);
       return;
@@ -472,7 +495,6 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
                 const args = fc.args as any;
                 const txId = Date.now().toString();
                 
-                // Speak confirmation
                 speakText("Rögzíthetem ezt a tranzakciót?");
 
                 setMessages(prev => [...prev, {
@@ -525,7 +547,7 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
   };
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim() || isLoading || !isOnline) return;
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text }]);
     setInputText('');
     setIsLoading(true);
@@ -582,8 +604,8 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
           <button className="icon-btn" onClick={() => setShowVoiceSettings(!showVoiceSettings)}>
             <Icon name="record_voice_over" style={{ color: showVoiceSettings ? 'var(--primary)' : 'inherit' }} />
           </button>
-          <button className={`icon-btn ${isLive ? 'live-active' : ''}`} onClick={toggleLive}>
-              <Icon name={isLive ? "mic" : "mic_off"} />
+          <button className={`icon-btn ${isLive ? 'live-active' : ''}`} onClick={toggleLive} disabled={!isOnline}>
+              <Icon name={!isOnline ? "wifi_off" : isLive ? "mic" : "mic_off"} />
           </button>
         </div>
       </header>
@@ -624,6 +646,12 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
       )}
 
       <div className="chat-messages custom-scrollbar">
+        {!isOnline && (
+            <div className="offline-banner glass-panel">
+                <Icon name="wifi_off" />
+                <span>Offline mód: A chat csak internettel működik, de a naplód továbbra is elérhető.</span>
+            </div>
+        )}
         {messages.map(msg => (
           <div key={msg.id} className={`chat-bubble ${msg.role}`}>
             <div className="bubble-content">
@@ -687,7 +715,7 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
               ) : (
                 <>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
-                    {msg.role === 'model' && (
+                    {msg.role === 'model' && isOnline && (
                         <button className="tts-btn" onClick={() => speakText(msg.text)}>
                         <Icon name="volume_up" style={{ fontSize: '16px' }} />
                         </button>
@@ -701,23 +729,29 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="chat-input-area glass-panel">
-        <input placeholder="Kérdezz vagy diktálj..." value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)} />
-        <button onClick={() => sendMessage(inputText)} className="send-btn"><Icon name="send" /></button>
+      <div className={`chat-input-area glass-panel ${!isOnline ? 'offline-dim' : ''}`}>
+        <input 
+            placeholder={isOnline ? "Kérdezz vagy diktálj..." : "Csatlakozz az internethez a chathez"} 
+            value={inputText} 
+            onChange={(e) => setInputText(e.target.value)} 
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)}
+            disabled={!isOnline}
+        />
+        <button onClick={() => sendMessage(inputText)} className="send-btn" disabled={!isOnline}><Icon name="send" /></button>
       </div>
     </div>
   );
 };
 
 // --- CREATIVE VIEW ---
-const CreativeView = () => {
+const CreativeView = ({ isOnline }: { isOnline: boolean }) => {
   const [prompt, setPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
   const generateImage = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || !isOnline) return;
     setIsGenerating(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -742,20 +776,21 @@ const CreativeView = () => {
         <h2>Vizualizáció</h2>
         <Icon name="palette" />
       </header>
-      <div className="glass-panel">
+      <div className={`glass-panel ${!isOnline ? 'offline-dim' : ''}`}>
         <textarea 
-          placeholder="Pl: Luxus iroda kilátással Dubajra, éjszaka..." 
+          placeholder={isOnline ? "Pl: Luxus iroda kilátással Dubajra, éjszaka..." : "A képalkotáshoz internet szükséges."}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           className="creative-input"
+          disabled={!isOnline}
         />
         <div className="aspect-ratio-selector">
           {(["1:1", "3:4", "16:9"] as AspectRatio[]).map(ratio => (
-            <button key={ratio} className={aspectRatio === ratio ? 'active' : ''} onClick={() => setAspectRatio(ratio)}>{ratio}</button>
+            <button key={ratio} className={aspectRatio === ratio ? 'active' : ''} onClick={() => setAspectRatio(ratio)} disabled={!isOnline}>{ratio}</button>
           ))}
         </div>
-        <button className="ai-analysis-btn w-full" style={{ marginTop: '15px' }} onClick={generateImage} disabled={isGenerating}>
-          {isGenerating ? 'Generálás...' : 'Kép Létrehozása'}
+        <button className="ai-analysis-btn w-full" style={{ marginTop: '15px' }} onClick={generateImage} disabled={isGenerating || !isOnline}>
+          {isGenerating ? 'Generálás...' : isOnline ? 'Kép Létrehozása' : 'Offline'}
         </button>
       </div>
       {generatedImageUrl && <img src={generatedImageUrl} alt="Gen" className="gen-img fade-in" />}
@@ -766,6 +801,9 @@ const CreativeView = () => {
 // --- MAIN APP ---
 const App = () => {
     const [view, setView] = useState<'finance' | 'ledger' | 'ai' | 'creative'>('ai');
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [isSyncing, setIsSyncing] = useState(false);
+    
     const [ledgerRecords, setLedgerRecords] = useState<FinancialRecord[]>(() => {
         const saved = localStorage.getItem('herwinner_ledger');
         return saved ? JSON.parse(saved) : [
@@ -778,6 +816,22 @@ const App = () => {
     });
 
     useEffect(() => {
+        const handleOnline = () => {
+            setIsOnline(true);
+            setIsSyncing(true);
+            setTimeout(() => setIsSyncing(false), 2000); // Simulate sync delay
+        };
+        const handleOffline = () => setIsOnline(false);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    useEffect(() => {
         localStorage.setItem('herwinner_ledger', JSON.stringify(ledgerRecords));
     }, [ledgerRecords]);
 
@@ -787,19 +841,28 @@ const App = () => {
 
     return (
         <div className="app-shell">
-            <BrandHeader />
+            <BrandHeader isOnline={isOnline} />
+            
+            {isSyncing && (
+                <div className="sync-toast fade-in">
+                    <Icon name="sync" className="spin" />
+                    <span>Adatok szinkronizálása...</span>
+                </div>
+            )}
+
             <div className="content-area">
-                {view === 'finance' && <DashboardView records={ledgerRecords} />}
+                {view === 'finance' && <DashboardView records={ledgerRecords} isOnline={isOnline} />}
                 {view === 'ledger' && (
                     <NotesView 
                         records={ledgerRecords} 
                         onAddRecord={addRecord} 
                         onUpdateRecord={updateRecord}
                         onDeleteRecord={deleteRecord}
+                        isOnline={isOnline}
                     />
                 )}
-                {view === 'ai' && <AiAssistantView onAddRecord={addRecord} />}
-                {view === 'creative' && <CreativeView />}
+                {view === 'ai' && <AiAssistantView onAddRecord={addRecord} isOnline={isOnline} />}
+                {view === 'creative' && <CreativeView isOnline={isOnline} />}
             </div>
             
             <nav className="bottom-nav">
