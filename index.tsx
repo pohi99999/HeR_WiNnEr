@@ -56,6 +56,79 @@ const BrandHeader = () => (
     </div>
 );
 
+// --- MODAL EDITOR ---
+const EditRecordModal = ({ record, onSave, onDelete, onClose }: { 
+    record: FinancialRecord, 
+    onSave: (r: FinancialRecord) => void, 
+    onDelete: (id: string) => void,
+    onClose: () => void 
+}) => {
+    const [formData, setFormData] = useState<FinancialRecord>({ ...record });
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ 
+            ...prev, 
+            [name]: name === 'amount' ? parseFloat(value) || 0 : value 
+        }));
+    };
+
+    return (
+        <div className="modal-overlay fade-in" onClick={onClose}>
+            <div className="modal-content glass-panel" onClick={e => e.stopPropagation()}>
+                <header className="modal-header">
+                    <h3>Szerkesztés</h3>
+                    <button className="icon-btn" onClick={onClose}><Icon name="close" /></button>
+                </header>
+                
+                <div className="modal-body">
+                    <div className="input-group">
+                        <label>Megnevezés</label>
+                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Pl. Élelmiszer" />
+                    </div>
+                    
+                    <div className="input-group">
+                        <label>Összeg (HUF)</label>
+                        <input name="amount" type="number" value={formData.amount} onChange={handleChange} placeholder="Pl. -5000" />
+                    </div>
+
+                    <div className="input-group">
+                        <label>Dátum</label>
+                        <input name="date" type="date" value={formData.date} onChange={handleChange} />
+                    </div>
+
+                    <div className="input-group">
+                        <label>Kategória</label>
+                        <select name="category" value={formData.category} onChange={handleChange}>
+                            <option value="Étel">Étel</option>
+                            <option value="Utazás">Utazás</option>
+                            <option value="Tech">Tech</option>
+                            <option value="Lakhatás">Lakhatás</option>
+                            <option value="Szórakozás">Szórakozás</option>
+                            <option value="Munka">Munka</option>
+                            <option value="Egyéb">Egyéb</option>
+                        </select>
+                    </div>
+
+                    <div className="input-group">
+                        <label>Megjegyzés</label>
+                        <textarea name="comment" value={formData.comment} onChange={handleChange} placeholder="További részletek..." />
+                    </div>
+                </div>
+
+                <footer className="modal-footer">
+                    <button className="delete-btn" onClick={() => { onDelete(record.id); onClose(); }}>
+                        <Icon name="delete" /> Törlés
+                    </button>
+                    <button className="save-btn" onClick={() => { onSave(formData); onClose(); }}>
+                        Mentés
+                    </button>
+                </footer>
+            </div>
+        </div>
+    );
+};
+
 // --- DASHBOARD VIEW ---
 const DashboardView = ({ records }: { records: FinancialRecord[] }) => {
     const [analysis, setAnalysis] = useState<string>('');
@@ -65,7 +138,7 @@ const DashboardView = ({ records }: { records: FinancialRecord[] }) => {
     const income = records.filter(r => r.amount > 0).reduce((acc, r) => acc + r.amount, 0);
     const expenses = Math.abs(records.filter(r => r.amount < 0).reduce((acc, r) => acc + r.amount, 0));
     const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
-    const healthScore = Math.max(0, Math.min(100, Math.round(savingsRate + 50))); // Simplified score
+    const healthScore = Math.max(0, Math.min(100, Math.round(savingsRate + 50)));
 
     const requestAiAnalysis = async () => {
         setIsAnalyzing(true);
@@ -93,7 +166,7 @@ const DashboardView = ({ records }: { records: FinancialRecord[] }) => {
                 <Icon name="dashboard" />
             </header>
 
-            <div className="glass-panel health-card" style={{ marginBottom: '20px', textAlign: 'center' }}>
+            <div className="glass-panel health-card" style={{ marginBottom: '20px', textAlign: 'center', padding: '20px' }}>
                 <div className="health-score-container">
                     <svg viewBox="0 0 36 36" className="circular-chart">
                         <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
@@ -140,8 +213,14 @@ const DashboardView = ({ records }: { records: FinancialRecord[] }) => {
 };
 
 // --- LEDGER / NOTES VIEW ---
-const NotesView = ({ records, onAddRecord }: { records: FinancialRecord[], onAddRecord: (r: FinancialRecord) => void }) => {
+const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord }: { 
+    records: FinancialRecord[], 
+    onAddRecord: (r: FinancialRecord) => void,
+    onUpdateRecord: (r: FinancialRecord) => void,
+    onDeleteRecord: (id: string) => void
+}) => {
     const [search, setSearch] = useState('');
+    const [editingRecord, setEditingRecord] = useState<FinancialRecord | null>(null);
     const formatCurrency = (val: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(val);
     
     const currentMonth = new Date().toISOString().slice(0, 7);
@@ -213,7 +292,7 @@ const NotesView = ({ records, onAddRecord }: { records: FinancialRecord[], onAdd
                         <div className="empty-state">Nincs találat.</div>
                     ) : (
                         filteredRecords.sort((a,b) => b.date.localeCompare(a.date)).map(r => (
-                            <div key={r.id} className="ledger-row">
+                            <div key={r.id} className="ledger-row" onClick={() => setEditingRecord(r)}>
                                 <div className="col-date">{r.date.split('-').slice(1).join('.')}</div>
                                 <div className="col-name">
                                     <div className="r-title">{r.name}</div>
@@ -228,13 +307,22 @@ const NotesView = ({ records, onAddRecord }: { records: FinancialRecord[], onAdd
                 </div>
             </div>
 
+            {editingRecord && (
+                <EditRecordModal 
+                    record={editingRecord} 
+                    onSave={onUpdateRecord} 
+                    onDelete={onDeleteRecord} 
+                    onClose={() => setEditingRecord(null)} 
+                />
+            )}
+
             <div className="ledger-actions" style={{ marginTop: '20px' }}>
                 <button className="ai-analysis-btn w-full" onClick={() => onAddRecord({
                     id: Date.now().toString(),
-                    name: 'Manuális bevitel',
-                    amount: -1500,
+                    name: 'Új tétel',
+                    amount: 0,
                     date: new Date().toISOString().split('T')[0],
-                    comment: 'Kézi rögzítés',
+                    comment: '',
                     category: 'Egyéb'
                 })}>
                     <Icon name="add" style={{ marginRight: '8px' }} /> Új tétel rögzítése
@@ -540,13 +628,22 @@ const App = () => {
     }, [ledgerRecords]);
 
     const addRecord = (r: FinancialRecord) => setLedgerRecords(prev => [r, ...prev]);
+    const updateRecord = (r: FinancialRecord) => setLedgerRecords(prev => prev.map(item => item.id === r.id ? r : item));
+    const deleteRecord = (id: string) => setLedgerRecords(prev => prev.filter(item => item.id !== id));
 
     return (
         <div className="app-shell">
             <BrandHeader />
             <div className="content-area">
                 {view === 'finance' && <DashboardView records={ledgerRecords} />}
-                {view === 'ledger' && <NotesView records={ledgerRecords} onAddRecord={addRecord} />}
+                {view === 'ledger' && (
+                    <NotesView 
+                        records={ledgerRecords} 
+                        onAddRecord={addRecord} 
+                        onUpdateRecord={updateRecord}
+                        onDeleteRecord={deleteRecord}
+                    />
+                )}
                 {view === 'ai' && <AiAssistantView onAddRecord={addRecord} />}
                 {view === 'creative' && <CreativeView />}
             </div>
