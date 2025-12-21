@@ -39,7 +39,24 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: 
 }
 
 // --- TYPES ---
-type ChatMessage = { id: string; role: 'user' | 'model'; text: string; grounding?: any[] };
+type PendingTransaction = {
+    id: string;
+    toolCallId: string;
+    name: string;
+    amount: number;
+    category: string;
+    comment: string;
+    sessionResolver?: (response: any) => void;
+};
+
+type ChatMessage = { 
+    id: string; 
+    role: 'user' | 'model' | 'system'; 
+    text: string; 
+    pendingTx?: PendingTransaction;
+    grounding?: any[] 
+};
+
 type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 type FinancialRecord = { id: string; name: string; amount: number; date: string; comment: string; category: string };
 type VoiceName = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr';
@@ -347,6 +364,7 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
   const outCtxRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef(0);
   const sourcesRef = useRef(new Set<AudioBufferSourceNode>());
+  const sessionRef = useRef<any>(null);
 
   useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
 
@@ -362,6 +380,24 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
         comment: { type: Type.STRING, description: 'Rövid megjegyzés' },
       },
       required: ['name', 'amount']
+    }
+  };
+
+  const handleConfirmation = (tx: PendingTransaction, confirmed: boolean) => {
+    if (confirmed) {
+        onAddRecord({
+            id: tx.id,
+            name: tx.name,
+            amount: tx.amount,
+            date: new Date().toISOString().split('T')[0],
+            comment: tx.comment,
+            category: tx.category
+        });
+        setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✓ Rögzítve: ${tx.name} (${tx.amount} Ft)` } : m));
+        if (tx.sessionResolver) tx.sessionResolver({ result: "Sikeresen rögzítve a felhasználó jóváhagyásával." });
+    } else {
+        setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✗ Elvetve: ${tx.name}` } : m));
+        if (tx.sessionResolver) tx.sessionResolver({ result: "A felhasználó elutasította a tranzakció rögzítését." });
     }
   };
 
@@ -389,7 +425,10 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
             const inputData = e.inputBuffer.getChannelData(0);
             const int16 = new Int16Array(inputData.length);
             for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
-            sessionPromise.then(s => s.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } }));
+            sessionPromise.then(s => {
+                sessionRef.current = s;
+                s.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } });
+            });
           };
           source.connect(scriptProcessor);
           scriptProcessor.connect(inCtx.destination);
@@ -399,17 +438,27 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
             for (const fc of msg.toolCall.functionCalls) {
               if (fc.name === 'add_financial_record') {
                 const args = fc.args as any;
-                onAddRecord({
-                    id: Date.now().toString(),
-                    name: args.name,
-                    amount: args.amount,
-                    date: new Date().toISOString().split('T')[0],
-                    comment: args.comment || 'Hangalapú rögzítés',
-                    category: args.category || 'Egyéb'
-                });
-                sessionPromise.then(s => s.sendToolResponse({
-                    functionResponses: { id: fc.id, name: fc.name, response: { result: "Sikeresen rögzítve!" } }
-                }));
+                const txId = Date.now().toString();
+                
+                // Add confirmation message
+                setMessages(prev => [...prev, {
+                    id: txId,
+                    role: 'system',
+                    text: 'Tranzakció jóváhagyása szükséges.',
+                    pendingTx: {
+                        id: txId,
+                        toolCallId: fc.id,
+                        name: args.name,
+                        amount: args.amount,
+                        category: args.category || 'Egyéb',
+                        comment: args.comment || 'Hangalapú rögzítés',
+                        sessionResolver: (resp) => {
+                            sessionPromise.then(s => s.sendToolResponse({
+                                functionResponses: { id: fc.id, name: fc.name, response: resp }
+                            }));
+                        }
+                    }
+                }]);
               }
             }
           }
@@ -473,13 +522,43 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
     setIsLoading(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: text });
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: response.text || '' }]);
+      const response = await ai.models.generateContent({ 
+          model: 'gemini-3-pro-preview', 
+          contents: text,
+          config: {
+              tools: [{ functionDeclarations: [addRecordTool] }]
+          }
+      });
+
+      const toolCalls = response.candidates[0].content.parts.filter(p => p.functionCall);
+      if (toolCalls.length > 0) {
+          for (const part of toolCalls) {
+              const fc = part.functionCall!;
+              const args = fc.args as any;
+              const txId = Date.now().toString();
+              setMessages(prev => [...prev, {
+                id: txId,
+                role: 'system',
+                text: 'Tranzakció jóváhagyása szükséges.',
+                pendingTx: {
+                    id: txId,
+                    toolCallId: fc.id,
+                    name: args.name,
+                    amount: args.amount,
+                    category: args.category || 'Egyéb',
+                    comment: args.comment || 'Szöveges rögzítés'
+                }
+              }]);
+          }
+      } else {
+          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: response.text || '' }]);
+      }
     } catch (e) { console.error(e); }
     setIsLoading(false);
   };
 
   const voices: VoiceName[] = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Zephyr'];
+  const formatCurrency = (val: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(val);
 
   return (
     <div className="view-container chat-view">
@@ -534,11 +613,33 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
         {messages.map(msg => (
           <div key={msg.id} className={`chat-bubble ${msg.role}`}>
             <div className="bubble-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
-              {msg.role === 'model' && (
-                <button className="tts-btn" onClick={() => speakText(msg.text)}>
-                  <Icon name="volume_up" style={{ fontSize: '16px' }} />
-                </button>
+              {msg.pendingTx ? (
+                <div className="confirmation-card glass-panel fade-in">
+                    <div className="tx-header">
+                        <Icon name="receipt_long" />
+                        <span>Tranzakció javaslat</span>
+                    </div>
+                    <div className="tx-details">
+                        <div className="tx-name">{msg.pendingTx.name}</div>
+                        <div className={`tx-amt ${msg.pendingTx.amount >= 0 ? 'success-text' : 'danger-text'}`}>
+                            {msg.pendingTx.amount > 0 ? '+' : ''}{formatCurrency(msg.pendingTx.amount)}
+                        </div>
+                        <div className="tx-meta">{msg.pendingTx.category} • {msg.pendingTx.comment}</div>
+                    </div>
+                    <div className="tx-actions">
+                        <button className="confirm-btn" onClick={() => handleConfirmation(msg.pendingTx!, true)}>Rögzítés</button>
+                        <button className="cancel-btn" onClick={() => handleConfirmation(msg.pendingTx!, false)}>Mégse</button>
+                    </div>
+                </div>
+              ) : (
+                <>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                    {msg.role === 'model' && (
+                        <button className="tts-btn" onClick={() => speakText(msg.text)}>
+                        <Icon name="volume_up" style={{ fontSize: '16px' }} />
+                        </button>
+                    )}
+                </>
               )}
             </div>
           </div>
