@@ -38,7 +38,11 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: 
   return buffer;
 }
 
+const getCategorySlug = (cat: string) => cat.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
 // --- TYPES ---
+type SyncStatus = 'synced' | 'pending' | 'conflict';
+
 type PendingTransaction = {
     id: string;
     toolCallId: string;
@@ -55,11 +59,21 @@ type ChatMessage = {
     role: 'user' | 'model' | 'system'; 
     text: string; 
     pendingTx?: PendingTransaction;
-    grounding?: any[] 
+    grounding?: any[]; 
 };
 
 type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
-type FinancialRecord = { id: string; name: string; amount: number; date: string; comment: string; category: string };
+type FinancialRecord = { 
+    id: string; 
+    name: string; 
+    amount: number; 
+    date: string; 
+    comment: string; 
+    category: string;
+    syncStatus?: SyncStatus;
+    lastModified?: number;
+};
+
 type VoiceName = 'Kore' | 'Puck' | 'Charon' | 'Fenrir' | 'Zephyr';
 
 // --- COMPONENTS ---
@@ -79,6 +93,50 @@ const BrandHeader = ({ isOnline }: { isOnline: boolean }) => (
         </div>
     </div>
 );
+
+// --- CONFLICT RESOLUTION MODAL ---
+const ConflictModal = ({ localRecord, remoteRecord, onResolve }: { 
+    localRecord: FinancialRecord, 
+    remoteRecord: FinancialRecord, 
+    onResolve: (version: 'local' | 'remote') => void 
+}) => {
+    const formatCurrency = (val: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(val);
+    
+    return (
+        <div className="modal-overlay fade-in">
+            <div className="modal-content glass-panel conflict-modal">
+                <header className="modal-header">
+                    <h3>Ütközés észleléve</h3>
+                    <Icon name="sync_problem" style={{ color: 'var(--warning)' }} />
+                </header>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    A következő tétel módosult a felhőben, amíg te offline voltál. Melyik verziót szeretnéd megtartani?
+                </p>
+                
+                <div className="conflict-grid">
+                    <div className="conflict-version local">
+                        <span className="version-label">Helyi (Saját)</span>
+                        <div className="v-box">
+                            <strong>{localRecord.name}</strong>
+                            <span className={localRecord.amount >= 0 ? 'success-text' : 'danger-text'}>{formatCurrency(localRecord.amount)}</span>
+                            <small>{localRecord.category}</small>
+                        </div>
+                        <button className="confirm-btn" onClick={() => onResolve('local')}>Ezt tartom meg</button>
+                    </div>
+                    <div className="conflict-version remote">
+                        <span className="version-label">Felhőbeli</span>
+                        <div className="v-box">
+                            <strong>{remoteRecord.name}</strong>
+                            <span className={remoteRecord.amount >= 0 ? 'success-text' : 'danger-text'}>{formatCurrency(remoteRecord.amount)}</span>
+                            <small>{remoteRecord.category}</small>
+                        </div>
+                        <button className="cancel-btn" onClick={() => onResolve('remote')}>Váltás erre</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // --- MODAL EDITOR ---
 const EditRecordModal = ({ record, onSave, onDelete, onClose }: { 
@@ -157,12 +215,15 @@ const EditRecordModal = ({ record, onSave, onDelete, onClose }: {
 const DashboardView = ({ records, isOnline }: { records: FinancialRecord[], isOnline: boolean }) => {
     const [analysis, setAnalysis] = useState<string>('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [monthlyBudget, setMonthlyBudget] = useState(300000);
     const formatCurrency = (val: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(val);
 
     const income = records.filter(r => r.amount > 0).reduce((acc, r) => acc + r.amount, 0);
     const expenses = Math.abs(records.filter(r => r.amount < 0).reduce((acc, r) => acc + r.amount, 0));
     const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
     const healthScore = Math.max(0, Math.min(100, Math.round(savingsRate + 50)));
+    
+    const budgetUsedPercent = Math.min(100, (expenses / monthlyBudget) * 100);
 
     const requestAiAnalysis = async () => {
         if (!isOnline) return;
@@ -191,26 +252,42 @@ const DashboardView = ({ records, isOnline }: { records: FinancialRecord[], isOn
                 <Icon name="dashboard" />
             </header>
 
-            <div className="glass-panel health-card" style={{ marginBottom: '20px', textAlign: 'center', padding: '20px' }}>
-                <div className="health-score-container">
-                    <svg viewBox="0 0 36 36" className="circular-chart">
-                        <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <path className="circle" strokeDasharray={`${healthScore}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                        <text x="18" y="20.35" className="percentage">{healthScore}%</text>
-                    </svg>
-                </div>
-                <h3 style={{ margin: '10px 0 5px 0' }}>Pénzügyi Egészség</h3>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>A megtakarítási rátád: {savingsRate.toFixed(1)}%</p>
-            </div>
-
             <div className="summary-grid">
+                <div className="summary-card glass-panel" style={{ gridColumn: 'span 2', padding: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <span className="label">Havi költségkeret</span>
+                        <span className="value" style={{ fontSize: '14px' }}>{formatCurrency(monthlyBudget - expenses)} maradt</span>
+                    </div>
+                    <div className="budget-bar-container">
+                        <div className={`budget-bar-fill ${budgetUsedPercent > 90 ? 'danger' : budgetUsedPercent > 70 ? 'warning' : ''}`} style={{ width: `${budgetUsedPercent}%` }}></div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                        <span>Elköltve: {formatCurrency(expenses)}</span>
+                        <span>Keret: {formatCurrency(monthlyBudget)}</span>
+                    </div>
+                </div>
+
                 <div className="summary-card glass-panel">
                     <span className="label">Havi Bevétel</span>
                     <span className="value success-text">{formatCurrency(income)}</span>
                 </div>
                 <div className="summary-card glass-panel">
-                    <span className="label">Havi Kiadás</span>
-                    <span className="value danger-text">{formatCurrency(expenses)}</span>
+                    <span className="label">Megtakarítás</span>
+                    <span className="value primary-text">{formatCurrency(income - expenses)}</span>
+                </div>
+            </div>
+
+            <div className="glass-panel health-card" style={{ marginBottom: '20px', textAlign: 'center', padding: '20px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div className="health-score-container" style={{ width: '80px', margin: 0 }}>
+                    <svg viewBox="0 0 36 36" className="circular-chart">
+                        <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path className="circle" strokeDasharray={`${healthScore}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <text x="18" y="20.35" className="percentage" style={{ fontSize: '8px' }}>{healthScore}%</text>
+                    </svg>
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                    <h3 style={{ margin: '0 0 5px 0', fontSize: '16px' }}>Pénzügyi Pontszám</h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>A megtakarítási rátád: {savingsRate.toFixed(1)}%</p>
                 </div>
             </div>
 
@@ -265,22 +342,34 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
     const expenses = Math.abs(monthlyRecords.filter(r => r.amount < 0).reduce((acc, r) => acc + r.amount, 0));
     const balance = income - expenses;
 
-    const categories = Array.from(new Set(records.filter(r => r.amount < 0).map(r => r.category)));
-    const categoryData = categories.map(cat => {
-        const total = Math.abs(records.filter(r => r.category === cat && r.amount < 0).reduce((acc, r) => acc + r.amount, 0));
-        return { name: cat, total };
-    }).sort((a, b) => b.total - a.total);
-
-    const maxCatTotal = categoryData.length > 0 ? categoryData[0].total : 1;
+    const exportToCSV = () => {
+        const headers = ["Dátum", "Név", "Összeg", "Kategória", "Megjegyzés"];
+        const rows = records.map(r => [r.date, r.name, r.amount, r.category, r.comment]);
+        const csvContent = "data:text/csv;charset=utf-8," 
+            + headers.join(",") + "\n"
+            + rows.map(e => e.join(",")).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `herwinner_ledger_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
         <div className="view-container">
             <header className="view-header">
                 <div>
                     <h2>Pénzügyi Napló</h2>
-                    {!isOnline && <span style={{ fontSize: '10px', color: 'var(--secondary)' }}>Helyi mentés aktív</span>}
+                    {!isOnline && <span style={{ fontSize: '10px', color: 'var(--secondary)' }}>Helyi mód (Szerkesztés engedélyezve)</span>}
                 </div>
-                <div className={`mini-balance ${balance >= 0 ? 'pos' : 'neg'}`}>{formatCurrency(balance)}</div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="icon-btn-mini" onClick={exportToCSV} title="CSV Export">
+                        <Icon name="download" />
+                    </button>
+                    <div className={`mini-balance ${balance >= 0 ? 'pos' : 'neg'}`}>{formatCurrency(balance)}</div>
+                </div>
             </header>
 
             <div className="search-bar glass-panel" style={{ marginBottom: '15px', padding: '8px 15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -293,28 +382,8 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
                     style={{ background: 'transparent', border: 'none', color: 'white', flex: 1, outline: 'none', fontSize: '14px' }}
                 />
             </div>
-
-            {/* Category Chart */}
-            {categoryData.length > 0 && !search && (
-                <div className="chart-section glass-panel">
-                    <span className="section-title">Kiadások kategória szerint</span>
-                    <div className="bar-chart">
-                        {categoryData.slice(0, 4).map(cat => (
-                            <div key={cat.name} className="chart-item">
-                                <div className="chart-labels">
-                                    <span>{cat.name}</span>
-                                    <span className="val">{formatCurrency(cat.total)}</span>
-                                </div>
-                                <div className="bar-bg">
-                                    <div className="bar-fill" style={{ width: `${(cat.total / maxCatTotal) * 100}%` }}></div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
             
-            <div className="ledger-container glass-panel" style={{ marginTop: '20px' }}>
+            <div className="ledger-container glass-panel">
                 <div className="ledger-header">
                     <div className="col-date">Dátum</div>
                     <div className="col-name">Tétel</div>
@@ -325,11 +394,18 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
                         <div className="empty-state">Nincs találat.</div>
                     ) : (
                         filteredRecords.sort((a,b) => b.date.localeCompare(a.date)).map(r => (
-                            <div key={r.id} className="ledger-row" onClick={() => setEditingRecord(r)}>
-                                <div className="col-date">{r.date.split('-').slice(1).join('.')}</div>
+                            <div key={r.id} className={`ledger-row ${r.syncStatus === 'pending' ? 'pending-sync' : ''} ${r.syncStatus === 'conflict' ? 'conflict-row' : ''}`} onClick={() => setEditingRecord(r)}>
+                                <div className="col-date">
+                                    {r.date.split('-').slice(1).join('.')}
+                                    {r.syncStatus === 'pending' && <Icon name="sync" className="spin mini-icon" />}
+                                    {r.syncStatus === 'conflict' && <Icon name="warning" className="mini-icon danger-text" />}
+                                </div>
                                 <div className="col-name">
                                     <div className="r-title">{r.name}</div>
-                                    <div className="r-comment">{r.category} • {r.comment}</div>
+                                    <div className="r-comment">
+                                        <span className={`cat-tag cat-${getCategorySlug(r.category)}`}>{r.category}</span>
+                                        {r.comment && <span> • {r.comment}</span>}
+                                    </div>
                                 </div>
                                 <div className={`col-amt ${r.amount >= 0 ? 'success-text' : 'danger-text'}`}>
                                     {r.amount > 0 ? '+' : ''}{formatCurrency(r.amount)}
@@ -356,7 +432,9 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
                     amount: 0,
                     date: new Date().toISOString().split('T')[0],
                     comment: '',
-                    category: 'Egyéb'
+                    category: 'Egyéb',
+                    syncStatus: isOnline ? 'synced' : 'pending',
+                    lastModified: Date.now()
                 })}>
                     <Icon name="add" style={{ marginRight: '8px' }} /> Új tétel rögzítése
                 </button>
@@ -379,16 +457,8 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
   
   const outCtxRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef(0);
-  const sourcesRef = useRef(new Set<AudioBufferSourceNode>());
-  const sessionRef = useRef<any>(null);
 
   useEffect(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
-
-  useEffect(() => {
-    if (!isOnline && isLive) {
-        setIsLive(false);
-    }
-  }, [isOnline]);
 
   const addRecordTool: FunctionDeclaration = {
     name: 'add_financial_record',
@@ -439,14 +509,14 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
             amount: tx.amount,
             date: new Date().toISOString().split('T')[0],
             comment: tx.comment,
-            category: tx.category
+            category: tx.category,
+            syncStatus: isOnline ? 'synced' : 'pending',
+            lastModified: Date.now()
         });
         setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✓ Rögzítve: ${tx.name} (${tx.amount} Ft)` } : m));
-        if (tx.sessionResolver) tx.sessionResolver({ result: "Sikeresen rögzítve a felhasználó jóváhagyásával." });
         speakText("Rendben, rögzítettem a tételt.");
     } else {
         setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✗ Elvetve: ${tx.name}` } : m));
-        if (tx.sessionResolver) tx.sessionResolver({ result: "A felhasználó elutasította a tranzakció rögzítését." });
         speakText("Megszakítva.");
     }
   };
@@ -481,7 +551,6 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
             const int16 = new Int16Array(inputData.length);
             for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
             sessionPromise.then(s => {
-                sessionRef.current = s;
                 s.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } });
             });
           };
@@ -494,26 +563,10 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
               if (fc.name === 'add_financial_record') {
                 const args = fc.args as any;
                 const txId = Date.now().toString();
-                
                 speakText("Rögzíthetem ezt a tranzakciót?");
-
                 setMessages(prev => [...prev, {
-                    id: txId,
-                    role: 'system',
-                    text: 'Tranzakció jóváhagyása szükséges.',
-                    pendingTx: {
-                        id: txId,
-                        toolCallId: fc.id,
-                        name: args.name,
-                        amount: args.amount,
-                        category: args.category || 'Egyéb',
-                        comment: args.comment || 'Hangalapú rögzítés',
-                        sessionResolver: (resp) => {
-                            sessionPromise.then(s => s.sendToolResponse({
-                                functionResponses: { id: fc.id, name: fc.name, response: resp }
-                            }));
-                        }
-                    }
+                    id: txId, role: 'system', text: 'Megerősítés...',
+                    pendingTx: { id: txId, toolCallId: fc.id, name: args.name, amount: args.amount, category: args.category || 'Egyéb', comment: args.comment || 'Voice' }
                 }]);
               }
             }
@@ -529,7 +582,6 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
             source.playbackRate.value = voiceSpeed;
             source.start(nextStartTimeRef.current);
             nextStartTimeRef.current += (buffer.duration / voiceSpeed);
-            sourcesRef.current.add(source);
           }
         },
         onclose: () => setIsLive(false),
@@ -537,10 +589,8 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       },
       config: { 
         responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } }
-        },
-        systemInstruction: 'Te vagy a HeR WiNnEr pénzügyi asszisztens. Ha a felhasználó említ egy kiadást vagy bevételt, használd az add_financial_record eszközt. Légy barátságos és tömör. Ha hívod az eszközt, a felhasználó megerősítésére várnod kell a kliens oldalon.',
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } },
+        systemInstruction: 'Pénzügyi asszisztens vagy. Használd az add_financial_record eszközt tranzakciókhoz.',
         tools: [{ functionDeclarations: [addRecordTool] }]
       }
     });
@@ -557,43 +607,33 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
           model: 'gemini-3-pro-preview', 
           contents: text,
           config: {
-              tools: [{ functionDeclarations: [addRecordTool] }]
+              tools: [{ functionDeclarations: [addRecordTool] }, { googleSearch: {} }]
           }
       });
 
-      const toolCalls = response.candidates[0].content.parts.filter(p => p.functionCall);
-      if (toolCalls.length > 0) {
+      const toolCalls = response.candidates?.[0]?.content?.parts.filter(p => p.functionCall);
+      const grounding = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+
+      if (toolCalls && toolCalls.length > 0) {
           for (const part of toolCalls) {
               const fc = part.functionCall!;
               const args = fc.args as any;
               const txId = Date.now().toString();
-              
               speakText("Megerősítenéd a rögzítést?");
-
               setMessages(prev => [...prev, {
-                id: txId,
-                role: 'system',
-                text: 'Tranzakció jóváhagyása szükséges.',
-                pendingTx: {
-                    id: txId,
-                    toolCallId: fc.id,
-                    name: args.name,
-                    amount: args.amount,
-                    category: args.category || 'Egyéb',
-                    comment: args.comment || 'Szöveges rögzítés'
-                }
+                id: txId, role: 'system', text: 'Megerősítés...',
+                pendingTx: { id: txId, toolCallId: fc.id, name: args.name, amount: args.amount, category: args.category || 'Egyéb', comment: args.comment || 'Chat' }
               }]);
           }
       } else {
           const resText = response.text || '';
-          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: resText }]);
+          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: resText, grounding }]);
           speakText(resText);
       }
     } catch (e) { console.error(e); }
     setIsLoading(false);
   };
 
-  const voices: VoiceName[] = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Zephyr'];
   const formatCurrency = (val: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(val);
 
   return (
@@ -613,45 +653,19 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       {showVoiceSettings && (
         <div className="voice-settings-overlay glass-panel fade-in">
           <div className="settings-section">
-            <span className="section-title">AI Hang Kiválasztása</span>
+            <span className="section-title">AI Hang</span>
             <div className="voice-grid">
-              {voices.map(v => (
-                <button 
-                  key={v} 
-                  className={`voice-chip ${selectedVoice === v ? 'active' : ''}`}
-                  onClick={() => setSelectedVoice(v)}
-                >
-                  {v}
-                </button>
+              {['Kore', 'Puck', 'Charon', 'Zephyr'].map(v => (
+                <button key={v} className={`voice-chip ${selectedVoice === v ? 'active' : ''}`} onClick={() => setSelectedVoice(v as VoiceName)}>{v}</button>
               ))}
             </div>
-          </div>
-          <div className="settings-section" style={{ marginTop: '15px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span className="section-title">Beszédsebesség</span>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--primary)' }}>{voiceSpeed.toFixed(1)}x</span>
-            </div>
-            <input 
-              type="range" 
-              min="0.5" 
-              max="2.0" 
-              step="0.1" 
-              value={voiceSpeed} 
-              onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
-              className="speed-slider"
-            />
           </div>
           <button className="close-settings-btn" onClick={() => setShowVoiceSettings(false)}>Kész</button>
         </div>
       )}
 
       <div className="chat-messages custom-scrollbar">
-        {!isOnline && (
-            <div className="offline-banner glass-panel">
-                <Icon name="wifi_off" />
-                <span>Offline mód: A chat csak internettel működik, de a naplód továbbra is elérhető.</span>
-            </div>
-        )}
+        {!isOnline && <div className="offline-banner glass-panel"><Icon name="wifi_off" /><span>Offline mód aktív. A chathez internet kell.</span></div>}
         {messages.map(msg => (
           <div key={msg.id} className={`chat-bubble ${msg.role}`}>
             <div className="bubble-content">
@@ -659,66 +673,39 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
                 <div className="confirmation-card glass-panel fade-in">
                     <div className="tx-header">
                         <Icon name="receipt_long" />
-                        <span>Tranzakció jóváhagyása</span>
+                        <span>Megerősítés</span>
                         <button className="icon-btn-mini" onClick={() => updatePendingTx(msg.pendingTx!.id, { isEditing: !msg.pendingTx!.isEditing })}>
-                            <Icon name={msg.pendingTx.isEditing ? "check" : "edit"} style={{ fontSize: '16px' }} />
+                            <Icon name={msg.pendingTx.isEditing ? "check" : "edit"} style={{ fontSize: '14px' }} />
                         </button>
                     </div>
-                    
                     {msg.pendingTx.isEditing ? (
                         <div className="tx-edit-fields">
-                            <input 
-                                className="tx-input" 
-                                value={msg.pendingTx.name} 
-                                onChange={e => updatePendingTx(msg.pendingTx!.id, { name: e.target.value })}
-                                placeholder="Megnevezés"
-                            />
-                            <input 
-                                className="tx-input" 
-                                type="number"
-                                value={msg.pendingTx.amount} 
-                                onChange={e => updatePendingTx(msg.pendingTx!.id, { amount: parseFloat(e.target.value) || 0 })}
-                                placeholder="Összeg"
-                            />
-                            <select 
-                                className="tx-input" 
-                                value={msg.pendingTx.category} 
-                                onChange={e => updatePendingTx(msg.pendingTx!.id, { category: e.target.value })}
-                            >
-                                <option value="Étel">Étel</option>
-                                <option value="Utazás">Utazás</option>
-                                <option value="Tech">Tech</option>
-                                <option value="Lakhatás">Lakhatás</option>
-                                <option value="Munka">Munka</option>
-                                <option value="Egyéb">Egyéb</option>
-                            </select>
+                            <input className="tx-input" value={msg.pendingTx.name} onChange={e => updatePendingTx(msg.pendingTx!.id, { name: e.target.value })} />
+                            <input className="tx-input" type="number" value={msg.pendingTx.amount} onChange={e => updatePendingTx(msg.pendingTx!.id, { amount: parseFloat(e.target.value) || 0 })} />
                         </div>
                     ) : (
                         <div className="tx-details">
                             <div className="tx-name">{msg.pendingTx.name}</div>
-                            <div className={`tx-amt ${msg.pendingTx.amount >= 0 ? 'success-text' : 'danger-text'}`}>
-                                {msg.pendingTx.amount > 0 ? '+' : ''}{formatCurrency(msg.pendingTx.amount)}
-                            </div>
-                            <div className="tx-meta">{msg.pendingTx.category} • {msg.pendingTx.comment}</div>
+                            <div className={`tx-amt ${msg.pendingTx.amount >= 0 ? 'success-text' : 'danger-text'}`}>{formatCurrency(msg.pendingTx.amount)}</div>
                         </div>
                     )}
-
                     <div className="tx-actions">
-                        <button className="confirm-btn" onClick={() => handleConfirmation(msg.pendingTx!, true)}>
-                            <Icon name="done" style={{ fontSize: '14px', marginRight: '4px' }} /> Rögzítés
-                        </button>
-                        <button className="cancel-btn" onClick={() => handleConfirmation(msg.pendingTx!, false)}>
-                            Mégse
-                        </button>
+                        <button className="confirm-btn" onClick={() => handleConfirmation(msg.pendingTx!, true)}>Mentés</button>
+                        <button className="cancel-btn" onClick={() => handleConfirmation(msg.pendingTx!, false)}>Mégse</button>
                     </div>
                 </div>
               ) : (
                 <>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
-                    {msg.role === 'model' && isOnline && (
-                        <button className="tts-btn" onClick={() => speakText(msg.text)}>
-                        <Icon name="volume_up" style={{ fontSize: '16px' }} />
-                        </button>
+                    {msg.grounding && msg.grounding.length > 0 && (
+                        <div className="grounding-sources">
+                            <p>Források:</p>
+                            <ul>
+                                {msg.grounding.map((chunk, idx) => chunk.web && (
+                                    <li key={idx}><a href={chunk.web.uri} target="_blank" rel="noopener noreferrer">{chunk.web.title || chunk.web.uri}</a></li>
+                                ))}
+                            </ul>
+                        </div>
                     )}
                 </>
               )}
@@ -730,13 +717,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       </div>
 
       <div className={`chat-input-area glass-panel ${!isOnline ? 'offline-dim' : ''}`}>
-        <input 
-            placeholder={isOnline ? "Kérdezz vagy diktálj..." : "Csatlakozz az internethez a chathez"} 
-            value={inputText} 
-            onChange={(e) => setInputText(e.target.value)} 
-            onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)}
-            disabled={!isOnline}
-        />
+        <input placeholder={isOnline ? "Kérdezz..." : "Offline..."} value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)} disabled={!isOnline} />
         <button onClick={() => sendMessage(inputText)} className="send-btn" disabled={!isOnline}><Icon name="send" /></button>
       </div>
     </div>
@@ -746,7 +727,6 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
 // --- CREATIVE VIEW ---
 const CreativeView = ({ isOnline }: { isOnline: boolean }) => {
   const [prompt, setPrompt] = useState('');
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
@@ -758,7 +738,7 @@ const CreativeView = ({ isOnline }: { isOnline: boolean }) => {
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
         contents: { parts: [{ text: prompt }] },
-        config: { imageConfig: { aspectRatio, imageSize: "1K" } }
+        config: { imageConfig: { aspectRatio: "1:1", imageSize: "1K" } }
       });
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
@@ -766,32 +746,16 @@ const CreativeView = ({ isOnline }: { isOnline: boolean }) => {
           break;
         }
       }
-    } catch (e: any) { console.error(e); alert("Hiba történt a generáláskor."); }
+    } catch (e: any) { console.error(e); }
     finally { setIsGenerating(false); }
   };
 
   return (
     <div className="view-container">
-      <header className="view-header">
-        <h2>Vizualizáció</h2>
-        <Icon name="palette" />
-      </header>
+      <header className="view-header"><h2>Alkotás</h2><Icon name="palette" /></header>
       <div className={`glass-panel ${!isOnline ? 'offline-dim' : ''}`}>
-        <textarea 
-          placeholder={isOnline ? "Pl: Luxus iroda kilátással Dubajra, éjszaka..." : "A képalkotáshoz internet szükséges."}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          className="creative-input"
-          disabled={!isOnline}
-        />
-        <div className="aspect-ratio-selector">
-          {(["1:1", "3:4", "16:9"] as AspectRatio[]).map(ratio => (
-            <button key={ratio} className={aspectRatio === ratio ? 'active' : ''} onClick={() => setAspectRatio(ratio)} disabled={!isOnline}>{ratio}</button>
-          ))}
-        </div>
-        <button className="ai-analysis-btn w-full" style={{ marginTop: '15px' }} onClick={generateImage} disabled={isGenerating || !isOnline}>
-          {isGenerating ? 'Generálás...' : isOnline ? 'Kép Létrehozása' : 'Offline'}
-        </button>
+        <textarea placeholder="Kép prompt..." value={prompt} onChange={(e) => setPrompt(e.target.value)} className="creative-input" disabled={!isOnline} />
+        <button className="ai-analysis-btn w-full" onClick={generateImage} disabled={isGenerating || !isOnline}>{isGenerating ? 'Generálás...' : 'Létrehozás'}</button>
       </div>
       {generatedImageUrl && <img src={generatedImageUrl} alt="Gen" className="gen-img fade-in" />}
     </div>
@@ -803,51 +767,103 @@ const App = () => {
     const [view, setView] = useState<'finance' | 'ledger' | 'ai' | 'creative'>('ai');
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [conflictInfo, setConflictInfo] = useState<{ local: FinancialRecord, remote: FinancialRecord } | null>(null);
     
     const [ledgerRecords, setLedgerRecords] = useState<FinancialRecord[]>(() => {
         const saved = localStorage.getItem('herwinner_ledger');
-        return saved ? JSON.parse(saved) : [
-            { id: '1', name: 'Projekt Honorárium', amount: 450000, date: '2024-05-10', comment: 'Befektetői bemutató', category: 'Munka' },
-            { id: '2', name: 'Szoftver előfizetés', amount: -12000, date: '2024-05-11', comment: 'Cloud tools', category: 'Tech' },
-            { id: '3', name: 'Étterem', amount: -8500, date: '2024-05-12', comment: 'Vacsora', category: 'Étel' },
-            { id: '4', name: 'Lakbér', amount: -150000, date: '2024-05-01', comment: 'Májusi díj', category: 'Lakhatás' },
-            { id: '5', name: 'Benzin', amount: -18000, date: '2024-05-05', comment: 'Tele tank', category: 'Utazás' }
-        ];
+        return saved ? JSON.parse(saved) : [];
     });
 
+    // Detect online status and sync
     useEffect(() => {
         const handleOnline = () => {
             setIsOnline(true);
-            setIsSyncing(true);
-            setTimeout(() => setIsSyncing(false), 2000); // Simulate sync delay
+            triggerSync();
         };
         const handleOffline = () => setIsOnline(false);
-
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
-        return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
+        return () => { 
+            window.removeEventListener('online', handleOnline); 
+            window.removeEventListener('offline', handleOffline); 
         };
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem('herwinner_ledger', JSON.stringify(ledgerRecords));
     }, [ledgerRecords]);
 
-    const addRecord = (r: FinancialRecord) => setLedgerRecords(prev => [r, ...prev]);
-    const updateRecord = (r: FinancialRecord) => setLedgerRecords(prev => prev.map(item => item.id === r.id ? r : item));
-    const deleteRecord = (id: string) => setLedgerRecords(prev => prev.filter(item => item.id !== id));
+    const triggerSync = async () => {
+        const pending = ledgerRecords.filter(r => r.syncStatus === 'pending');
+        if (pending.length === 0) return;
+
+        setIsSyncing(true);
+        
+        // Simulating robust sync logic with conflict detection
+        await new Promise(r => setTimeout(r, 2000));
+        
+        const updatedRecords = [...ledgerRecords];
+        
+        pending.forEach(local => {
+            const index = updatedRecords.findIndex(r => r.id === local.id);
+            if (index !== -1) {
+                // Simulate a conflict check (Randomly flag conflicts for demo purposes if it was an existing record)
+                // In a real app, this would check server state.
+                const isExistingRecord = parseInt(local.id) < Date.now() - 10000;
+                const simulateConflict = isExistingRecord && Math.random() > 0.8;
+                
+                if (simulateConflict) {
+                    updatedRecords[index] = { ...local, syncStatus: 'conflict' };
+                    // For the sake of UI demo, let's trigger a modal for the first conflict
+                    setConflictInfo({
+                        local,
+                        remote: { ...local, name: local.name + " (Szerver verzió)", amount: local.amount * 1.1, syncStatus: 'synced' }
+                    });
+                } else {
+                    updatedRecords[index] = { ...local, syncStatus: 'synced' };
+                }
+            }
+        });
+
+        setLedgerRecords(updatedRecords);
+        setIsSyncing(false);
+    };
+
+    useEffect(() => { localStorage.setItem('herwinner_ledger', JSON.stringify(ledgerRecords)); }, [ledgerRecords]);
+
+    const handleResolveConflict = (version: 'local' | 'remote') => {
+        if (!conflictInfo) return;
+        const resolved = version === 'local' ? { ...conflictInfo.local, syncStatus: 'synced' as SyncStatus } : { ...conflictInfo.remote, syncStatus: 'synced' as SyncStatus };
+        setLedgerRecords(prev => prev.map(r => r.id === resolved.id ? resolved : r));
+        setConflictInfo(null);
+    };
+
+    const addRecord = (r: FinancialRecord) => {
+        const newRecord = { ...r, lastModified: Date.now(), syncStatus: isOnline ? 'synced' : ('pending' as SyncStatus) };
+        setLedgerRecords(prev => [newRecord, ...prev]);
+    };
+
+    const updateRecord = (r: FinancialRecord) => {
+        const updated = { ...r, lastModified: Date.now(), syncStatus: isOnline ? 'synced' : ('pending' as SyncStatus) };
+        setLedgerRecords(prev => prev.map(item => item.id === r.id ? updated : item));
+    };
+
+    const deleteRecord = (id: string) => {
+        setLedgerRecords(prev => prev.filter(item => item.id !== id));
+    };
 
     return (
         <div className="app-shell">
             <BrandHeader isOnline={isOnline} />
-            
             {isSyncing && (
                 <div className="sync-toast fade-in">
                     <Icon name="sync" className="spin" />
-                    <span>Adatok szinkronizálása...</span>
+                    <span>Szinkronizálás...</span>
                 </div>
+            )}
+            
+            {conflictInfo && (
+                <ConflictModal 
+                    localRecord={conflictInfo.local} 
+                    remoteRecord={conflictInfo.remote} 
+                    onResolve={handleResolveConflict} 
+                />
             )}
 
             <div className="content-area">
@@ -856,9 +872,9 @@ const App = () => {
                     <NotesView 
                         records={ledgerRecords} 
                         onAddRecord={addRecord} 
-                        onUpdateRecord={updateRecord}
-                        onDeleteRecord={deleteRecord}
-                        isOnline={isOnline}
+                        onUpdateRecord={updateRecord} 
+                        onDeleteRecord={deleteRecord} 
+                        isOnline={isOnline} 
                     />
                 )}
                 {view === 'ai' && <AiAssistantView onAddRecord={addRecord} isOnline={isOnline} />}
@@ -866,18 +882,10 @@ const App = () => {
             </div>
             
             <nav className="bottom-nav">
-                <button className={`nav-item ${view === 'finance' ? 'active' : ''}`} onClick={() => setView('finance')}>
-                    <Icon name="grid_view" /><span>Pénz</span>
-                </button>
-                <button className={`nav-item ${view === 'ledger' ? 'active' : ''}`} onClick={() => setView('ledger')}>
-                    <Icon name="description" /><span>Napló</span>
-                </button>
-                <button className={`nav-item ${view === 'ai' ? 'active' : ''}`} onClick={() => setView('ai')}>
-                    <div className="ai-nav-glow"><Icon name="smart_toy" /></div>
-                </button>
-                <button className={`nav-item ${view === 'creative' ? 'active' : ''}`} onClick={() => setView('creative')}>
-                    <Icon name="auto_awesome" /><span>Alkotás</span>
-                </button>
+                <button className={`nav-item ${view === 'finance' ? 'active' : ''}`} onClick={() => setView('finance')}><Icon name="grid_view" /><span>Pénz</span></button>
+                <button className={`nav-item ${view === 'ledger' ? 'active' : ''}`} onClick={() => setView('ledger')}><Icon name="description" /><span>Napló</span></button>
+                <button className={`nav-item ${view === 'ai' ? 'active' : ''}`} onClick={() => setView('ai')}><div className="ai-nav-glow"><Icon name="smart_toy" /></div></button>
+                <button className={`nav-item ${view === 'creative' ? 'active' : ''}`} onClick={() => setView('creative')}><Icon name="auto_awesome" /><span>Alkotás</span></button>
             </nav>
         </div>
     );
