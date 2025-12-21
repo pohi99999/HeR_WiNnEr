@@ -27,6 +27,60 @@ body {
 .app-shell { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
 .content-area { flex: 1; overflow-y: auto; padding-bottom: 110px; }
 
+/* VOICE SETTINGS ENHANCEMENTS */
+.voice-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.voice-selection-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.voice-chip {
+    flex: 1;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-glass);
+    color: white;
+    padding: 10px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+.voice-chip.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    box-shadow: 0 0 15px var(--primary-glow);
+}
+.preview-btn {
+    color: var(--secondary);
+    transition: transform 0.2s;
+}
+.preview-btn:active {
+    transform: scale(0.9);
+}
+
+.speed-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    outline: none;
+    margin: 10px 0;
+}
+.speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--primary);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px var(--primary-glow);
+}
+
 /* LEDGER ENHANCEMENTS */
 .ledger-row {
     position: relative;

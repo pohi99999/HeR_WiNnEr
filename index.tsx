@@ -475,7 +475,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
     }
   };
 
-  const speakText = async (text: string) => {
+  const speakText = async (text: string, voiceOverride?: VoiceName) => {
     if (!isOnline) return;
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -484,7 +484,11 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
         contents: [{ parts: [{ text }] }],
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } },
+          speechConfig: { 
+            voiceConfig: { 
+                prebuiltVoiceConfig: { voiceName: voiceOverride || selectedVoice } 
+            } 
+          },
         },
       });
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -653,13 +657,44 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       {showVoiceSettings && (
         <div className="voice-settings-overlay glass-panel fade-in">
           <div className="settings-section">
-            <span className="section-title">AI Hang</span>
+            <span className="section-title">AI Hang Kiválasztása</span>
             <div className="voice-grid">
               {['Kore', 'Puck', 'Charon', 'Zephyr'].map(v => (
-                <button key={v} className={`voice-chip ${selectedVoice === v ? 'active' : ''}`} onClick={() => setSelectedVoice(v as VoiceName)}>{v}</button>
+                <div key={v} className="voice-selection-row">
+                    <button 
+                        className={`voice-chip ${selectedVoice === v ? 'active' : ''}`} 
+                        onClick={() => setSelectedVoice(v as VoiceName)}
+                    >
+                        {v}
+                    </button>
+                    <button 
+                        className="icon-btn-mini preview-btn" 
+                        onClick={() => speakText(`Hello, én vagyok ${v}.`, v as VoiceName)}
+                        title="Minta lejátszása"
+                    >
+                        <Icon name="play_circle" style={{ fontSize: '20px' }} />
+                    </button>
+                </div>
               ))}
             </div>
           </div>
+          
+          <div className="settings-section" style={{ marginTop: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span className="section-title">Beszédsebesség</span>
+                <span style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 'bold' }}>{voiceSpeed.toFixed(1)}x</span>
+            </div>
+            <input 
+                type="range" 
+                min="0.5" 
+                max="2.0" 
+                step="0.1" 
+                value={voiceSpeed} 
+                onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
+                className="speed-slider"
+            />
+          </div>
+
           <button className="close-settings-btn" onClick={() => setShowVoiceSettings(false)}>Kész</button>
         </div>
       )}
