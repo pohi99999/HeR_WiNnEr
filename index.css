@@ -103,17 +103,32 @@ body {
     margin-top: 10px;
     border: 1px solid var(--primary);
     min-width: 220px;
+    background: rgba(139, 92, 246, 0.05);
 }
 .tx-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
     font-size: 10px;
     font-weight: 700;
     color: var(--primary);
     text-transform: uppercase;
     margin-bottom: 12px;
 }
+.tx-header .icon-btn-mini { background: none; border: none; color: white; padding: 4px; display: flex; align-items: center; }
+
+.tx-edit-fields { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+.tx-input {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border-glass);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+}
+.tx-input:focus { border-color: var(--primary); }
+
 .tx-details { margin-bottom: 15px; }
 .tx-name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
 .tx-amt { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
@@ -122,6 +137,7 @@ body {
 .tx-actions { display: flex; gap: 8px; }
 .confirm-btn {
     flex: 1; background: var(--primary); border: none; color: white; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
 }
 .cancel-btn {
     flex: 1; background: transparent; border: 1px solid var(--border-glass); color: white; padding: 8px; border-radius: 8px; font-size: 12px;

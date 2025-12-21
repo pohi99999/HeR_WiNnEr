@@ -46,6 +46,7 @@ type PendingTransaction = {
     amount: number;
     category: string;
     comment: string;
+    isEditing?: boolean;
     sessionResolver?: (response: any) => void;
 };
 
@@ -383,6 +384,31 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
     }
   };
 
+  const speakText = async (text: string) => {
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } },
+        },
+      });
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const ctx = outCtxRef.current || new AudioContext({sampleRate: 24000});
+        outCtxRef.current = ctx;
+        const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.playbackRate.value = voiceSpeed;
+        source.start();
+      }
+    } catch (e) { console.error(e); }
+  };
+
   const handleConfirmation = (tx: PendingTransaction, confirmed: boolean) => {
     if (confirmed) {
         onAddRecord({
@@ -395,10 +421,16 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
         });
         setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✓ Rögzítve: ${tx.name} (${tx.amount} Ft)` } : m));
         if (tx.sessionResolver) tx.sessionResolver({ result: "Sikeresen rögzítve a felhasználó jóváhagyásával." });
+        speakText("Rendben, rögzítettem a tételt.");
     } else {
         setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✗ Elvetve: ${tx.name}` } : m));
         if (tx.sessionResolver) tx.sessionResolver({ result: "A felhasználó elutasította a tranzakció rögzítését." });
+        speakText("Megszakítva.");
     }
+  };
+
+  const updatePendingTx = (id: string, updates: Partial<PendingTransaction>) => {
+      setMessages(prev => prev.map(m => m.pendingTx?.id === id ? { ...m, pendingTx: { ...m.pendingTx!, ...updates } } : m));
   };
 
   const toggleLive = async () => {
@@ -440,7 +472,9 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
                 const args = fc.args as any;
                 const txId = Date.now().toString();
                 
-                // Add confirmation message
+                // Speak confirmation
+                speakText("Rögzíthetem ezt a tranzakciót?");
+
                 setMessages(prev => [...prev, {
                     id: txId,
                     role: 'system',
@@ -484,35 +518,10 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
         speechConfig: {
           voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } }
         },
-        systemInstruction: 'Te vagy a HeR WiNnEr pénzügyi asszisztens. Ha a felhasználó említ egy kiadást vagy bevételt, használd az add_financial_record eszközt. Légy barátságos és tömör.',
+        systemInstruction: 'Te vagy a HeR WiNnEr pénzügyi asszisztens. Ha a felhasználó említ egy kiadást vagy bevételt, használd az add_financial_record eszközt. Légy barátságos és tömör. Ha hívod az eszközt, a felhasználó megerősítésére várnod kell a kliens oldalon.',
         tools: [{ functionDeclarations: [addRecordTool] }]
       }
     });
-  };
-
-  const speakText = async (text: string) => {
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } },
-        },
-      });
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (base64Audio) {
-        const ctx = outCtxRef.current || new AudioContext({sampleRate: 24000});
-        outCtxRef.current = ctx;
-        const audioBuffer = await decodeAudioData(decode(base64Audio), ctx, 24000, 1);
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(ctx.destination);
-        source.playbackRate.value = voiceSpeed;
-        source.start();
-      }
-    } catch (e) { console.error(e); }
   };
 
   const sendMessage = async (text: string) => {
@@ -536,6 +545,9 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
               const fc = part.functionCall!;
               const args = fc.args as any;
               const txId = Date.now().toString();
+              
+              speakText("Megerősítenéd a rögzítést?");
+
               setMessages(prev => [...prev, {
                 id: txId,
                 role: 'system',
@@ -551,7 +563,9 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
               }]);
           }
       } else {
-          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: response.text || '' }]);
+          const resText = response.text || '';
+          setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: resText }]);
+          speakText(resText);
       }
     } catch (e) { console.error(e); }
     setIsLoading(false);
@@ -617,18 +631,57 @@ const AiAssistantView = ({ onAddRecord }: { onAddRecord: (r: FinancialRecord) =>
                 <div className="confirmation-card glass-panel fade-in">
                     <div className="tx-header">
                         <Icon name="receipt_long" />
-                        <span>Tranzakció javaslat</span>
+                        <span>Tranzakció jóváhagyása</span>
+                        <button className="icon-btn-mini" onClick={() => updatePendingTx(msg.pendingTx!.id, { isEditing: !msg.pendingTx!.isEditing })}>
+                            <Icon name={msg.pendingTx.isEditing ? "check" : "edit"} style={{ fontSize: '16px' }} />
+                        </button>
                     </div>
-                    <div className="tx-details">
-                        <div className="tx-name">{msg.pendingTx.name}</div>
-                        <div className={`tx-amt ${msg.pendingTx.amount >= 0 ? 'success-text' : 'danger-text'}`}>
-                            {msg.pendingTx.amount > 0 ? '+' : ''}{formatCurrency(msg.pendingTx.amount)}
+                    
+                    {msg.pendingTx.isEditing ? (
+                        <div className="tx-edit-fields">
+                            <input 
+                                className="tx-input" 
+                                value={msg.pendingTx.name} 
+                                onChange={e => updatePendingTx(msg.pendingTx!.id, { name: e.target.value })}
+                                placeholder="Megnevezés"
+                            />
+                            <input 
+                                className="tx-input" 
+                                type="number"
+                                value={msg.pendingTx.amount} 
+                                onChange={e => updatePendingTx(msg.pendingTx!.id, { amount: parseFloat(e.target.value) || 0 })}
+                                placeholder="Összeg"
+                            />
+                            <select 
+                                className="tx-input" 
+                                value={msg.pendingTx.category} 
+                                onChange={e => updatePendingTx(msg.pendingTx!.id, { category: e.target.value })}
+                            >
+                                <option value="Étel">Étel</option>
+                                <option value="Utazás">Utazás</option>
+                                <option value="Tech">Tech</option>
+                                <option value="Lakhatás">Lakhatás</option>
+                                <option value="Munka">Munka</option>
+                                <option value="Egyéb">Egyéb</option>
+                            </select>
                         </div>
-                        <div className="tx-meta">{msg.pendingTx.category} • {msg.pendingTx.comment}</div>
-                    </div>
+                    ) : (
+                        <div className="tx-details">
+                            <div className="tx-name">{msg.pendingTx.name}</div>
+                            <div className={`tx-amt ${msg.pendingTx.amount >= 0 ? 'success-text' : 'danger-text'}`}>
+                                {msg.pendingTx.amount > 0 ? '+' : ''}{formatCurrency(msg.pendingTx.amount)}
+                            </div>
+                            <div className="tx-meta">{msg.pendingTx.category} • {msg.pendingTx.comment}</div>
+                        </div>
+                    )}
+
                     <div className="tx-actions">
-                        <button className="confirm-btn" onClick={() => handleConfirmation(msg.pendingTx!, true)}>Rögzítés</button>
-                        <button className="cancel-btn" onClick={() => handleConfirmation(msg.pendingTx!, false)}>Mégse</button>
+                        <button className="confirm-btn" onClick={() => handleConfirmation(msg.pendingTx!, true)}>
+                            <Icon name="done" style={{ fontSize: '14px', marginRight: '4px' }} /> Rögzítés
+                        </button>
+                        <button className="cancel-btn" onClick={() => handleConfirmation(msg.pendingTx!, false)}>
+                            Mégse
+                        </button>
                     </div>
                 </div>
               ) : (
