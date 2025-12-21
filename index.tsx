@@ -62,7 +62,6 @@ type ChatMessage = {
     grounding?: any[]; 
 };
 
-type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
 type FinancialRecord = { 
     id: string; 
     name: string; 
@@ -230,8 +229,8 @@ const DashboardView = ({ records, isOnline }: { records: FinancialRecord[], isOn
         setIsAnalyzing(true);
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Íme a pénzügyi adataim (Név, Összeg, Kategória): ${records.map(r => `${r.name}: ${r.amount} Ft (${r.category})`).join(', ')}. 
-            Kérlek elemezd a pénzügyi helyzetemet profi tanácsadóként. Emeld ki a legnagyobb kiadásokat és adj 3 konkrét tippet a spórolásra. Tömör légy.`;
+            const prompt = `Íme a pénzügyi adataim: ${records.map(r => `${r.name}: ${r.amount} Ft (${r.category})`).join(', ')}. 
+            Kérlek elemezd a pénzügyi helyzetemet. Emeld ki a legnagyobb kiadásokat és adj 3 konkrét tippet a spórolásra. Tömör légy.`;
             
             const response = await ai.models.generateContent({
                 model: 'gemini-3-pro-preview',
@@ -287,7 +286,7 @@ const DashboardView = ({ records, isOnline }: { records: FinancialRecord[], isOn
                 </div>
                 <div style={{ textAlign: 'left' }}>
                     <h3 style={{ margin: '0 0 5px 0', fontSize: '16px' }}>Pénzügyi Pontszám</h3>
-                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>A megtakarítási rátád: {savingsRate.toFixed(1)}%</p>
+                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>Megtakarítási ráta: {savingsRate.toFixed(1)}%</p>
                 </div>
             </div>
 
@@ -298,11 +297,7 @@ const DashboardView = ({ records, isOnline }: { records: FinancialRecord[], isOn
                         <Icon name={isOnline ? "auto_awesome" : "wifi_off"} style={{ color: !isOnline ? 'var(--danger)' : isAnalyzing ? 'var(--text-muted)' : 'var(--secondary)' }} />
                     </button>
                 </div>
-                {!isOnline ? (
-                    <p style={{ fontSize: '13px', color: 'var(--danger)', margin: 0, textAlign: 'center' }}>
-                        Az AI elemzéshez internetkapcsolat szükséges.
-                    </p>
-                ) : isAnalyzing ? (
+                {isAnalyzing ? (
                     <div className="typing-indicator"><span></span><span></span><span></span></div>
                 ) : analysis ? (
                     <div className="analysis-text fade-in">
@@ -330,17 +325,10 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
     const [editingRecord, setEditingRecord] = useState<FinancialRecord | null>(null);
     const formatCurrency = (val: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(val);
     
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    const monthlyRecords = records.filter(r => r.date.startsWith(currentMonth));
-    
     const filteredRecords = records.filter(r => 
         r.name.toLowerCase().includes(search.toLowerCase()) || 
         r.category.toLowerCase().includes(search.toLowerCase())
     );
-
-    const income = monthlyRecords.filter(r => r.amount > 0).reduce((acc, r) => acc + r.amount, 0);
-    const expenses = Math.abs(monthlyRecords.filter(r => r.amount < 0).reduce((acc, r) => acc + r.amount, 0));
-    const balance = income - expenses;
 
     const exportToCSV = () => {
         const headers = ["Dátum", "Név", "Összeg", "Kategória", "Megjegyzés"];
@@ -351,7 +339,7 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `herwinner_ledger_${new Date().toISOString().slice(0,10)}.csv`);
+        link.setAttribute("download", `herwinner_export.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -362,13 +350,12 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
             <header className="view-header">
                 <div>
                     <h2>Pénzügyi Napló</h2>
-                    {!isOnline && <span style={{ fontSize: '10px', color: 'var(--secondary)' }}>Helyi mód (Szerkesztés engedélyezve)</span>}
+                    {!isOnline && <span style={{ fontSize: '10px', color: 'var(--secondary)' }}>Helyi mód aktív</span>}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <button className="icon-btn-mini" onClick={exportToCSV} title="CSV Export">
                         <Icon name="download" />
                     </button>
-                    <div className={`mini-balance ${balance >= 0 ? 'pos' : 'neg'}`}>{formatCurrency(balance)}</div>
                 </div>
             </header>
 
@@ -445,7 +432,7 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
 
 // --- AI ASSISTANT VIEW (WITH LIVE AUDIO) ---
 const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: FinancialRecord) => void, isOnline: boolean }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([{ id: '0', role: 'model', text: 'Szia! HeR vagyok. Miben segíthetek a pénzügyeidben?' }]);
+  const [messages, setMessages] = useState<ChatMessage[]>([{ id: '0', role: 'model', text: 'Szia! HeR vagyok. Miben segíthetek?' }]);
   const [inputText, setInputText] = useState('');
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -454,7 +441,6 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
   const outCtxRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef(0);
 
@@ -464,12 +450,12 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
     name: 'add_financial_record',
     parameters: {
       type: Type.OBJECT,
-      description: 'Hozzáad egy új pénzügyi bejegyzést a naplóhoz.',
+      description: 'Pénzügyi tétel rögzítése.',
       properties: {
-        name: { type: Type.STRING, description: 'A tétel neve (pl. Ebéd, Fizetés)' },
-        amount: { type: Type.NUMBER, description: 'Az összeg. Pozitív ha bevétel, negatív ha kiadás.' },
-        category: { type: Type.STRING, description: 'Kategória (pl. Étel, Utazás, Szórakozás, Tech, Egyéb)' },
-        comment: { type: Type.STRING, description: 'Rövid megjegyzés' },
+        name: { type: Type.STRING },
+        amount: { type: Type.NUMBER },
+        category: { type: Type.STRING },
+        comment: { type: Type.STRING },
       },
       required: ['name', 'amount']
     }
@@ -499,6 +485,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
+        // Alkalmazzuk a csúszkával beállított sebességet a lejátszásra
         source.playbackRate.value = voiceSpeed;
         source.start();
       }
@@ -517,8 +504,8 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
             syncStatus: isOnline ? 'synced' : 'pending',
             lastModified: Date.now()
         });
-        setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✓ Rögzítve: ${tx.name} (${tx.amount} Ft)` } : m));
-        speakText("Rendben, rögzítettem a tételt.");
+        setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✓ Rögzítve: ${tx.name}` } : m));
+        speakText("Sikeresen mentettem.");
     } else {
         setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✗ Elvetve: ${tx.name}` } : m));
         speakText("Megszakítva.");
@@ -567,7 +554,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
               if (fc.name === 'add_financial_record') {
                 const args = fc.args as any;
                 const txId = Date.now().toString();
-                speakText("Rögzíthetem ezt a tranzakciót?");
+                speakText("Rögzítsem?");
                 setMessages(prev => [...prev, {
                     id: txId, role: 'system', text: 'Megerősítés...',
                     pendingTx: { id: txId, toolCallId: fc.id, name: args.name, amount: args.amount, category: args.category || 'Egyéb', comment: args.comment || 'Voice' }
@@ -594,7 +581,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       config: { 
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } },
-        systemInstruction: 'Pénzügyi asszisztens vagy. Használd az add_financial_record eszközt tranzakciókhoz.',
+        systemInstruction: 'Pénzügyi asszisztens vagy. Segíts kiadásokat és bevételeket kezelni.',
         tools: [{ functionDeclarations: [addRecordTool] }]
       }
     });
@@ -623,7 +610,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
               const fc = part.functionCall!;
               const args = fc.args as any;
               const txId = Date.now().toString();
-              speakText("Megerősítenéd a rögzítést?");
+              speakText("Biztosan rögzíthetem?");
               setMessages(prev => [...prev, {
                 id: txId, role: 'system', text: 'Megerősítés...',
                 pendingTx: { id: txId, toolCallId: fc.id, name: args.name, amount: args.amount, category: args.category || 'Egyéb', comment: args.comment || 'Chat' }
@@ -643,10 +630,10 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
   return (
     <div className="view-container chat-view">
       <header className="view-header">
-        <h2>Pénzügyi Mentor</h2>
+        <h2>Asszisztens</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="icon-btn" onClick={() => setShowVoiceSettings(!showVoiceSettings)}>
-            <Icon name="record_voice_over" style={{ color: showVoiceSettings ? 'var(--primary)' : 'inherit' }} />
+            <Icon name="settings_voice" style={{ color: showVoiceSettings ? 'var(--primary)' : 'inherit' }} />
           </button>
           <button className={`icon-btn ${isLive ? 'live-active' : ''}`} onClick={toggleLive} disabled={!isOnline}>
               <Icon name={!isOnline ? "wifi_off" : isLive ? "mic" : "mic_off"} />
@@ -669,7 +656,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
                     </button>
                     <button 
                         className="icon-btn-mini preview-btn" 
-                        onClick={() => speakText(`Hello, én vagyok ${v}.`, v as VoiceName)}
+                        onClick={() => speakText(`Hello, én vagyok ${v}. Örülök a találkozásnak!`, v as VoiceName)}
                         title="Minta lejátszása"
                     >
                         <Icon name="play_circle" style={{ fontSize: '20px' }} />
@@ -681,7 +668,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
           
           <div className="settings-section" style={{ marginTop: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span className="section-title">Beszédsebesség</span>
+                <span className="section-title">Sebesség</span>
                 <span style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 'bold' }}>{voiceSpeed.toFixed(1)}x</span>
             </div>
             <input 
@@ -700,15 +687,13 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       )}
 
       <div className="chat-messages custom-scrollbar">
-        {!isOnline && <div className="offline-banner glass-panel"><Icon name="wifi_off" /><span>Offline mód aktív. A chathez internet kell.</span></div>}
         {messages.map(msg => (
           <div key={msg.id} className={`chat-bubble ${msg.role}`}>
-            <div className="bubble-content">
-              {msg.pendingTx ? (
+            {msg.pendingTx ? (
                 <div className="confirmation-card glass-panel fade-in">
                     <div className="tx-header">
                         <Icon name="receipt_long" />
-                        <span>Megerősítés</span>
+                        <span>Jóváhagyás</span>
                         <button className="icon-btn-mini" onClick={() => updatePendingTx(msg.pendingTx!.id, { isEditing: !msg.pendingTx!.isEditing })}>
                             <Icon name={msg.pendingTx.isEditing ? "check" : "edit"} style={{ fontSize: '14px' }} />
                         </button>
@@ -729,12 +714,11 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
                         <button className="cancel-btn" onClick={() => handleConfirmation(msg.pendingTx!, false)}>Mégse</button>
                     </div>
                 </div>
-              ) : (
+            ) : (
                 <>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
                     {msg.grounding && msg.grounding.length > 0 && (
                         <div className="grounding-sources">
-                            <p>Források:</p>
                             <ul>
                                 {msg.grounding.map((chunk, idx) => chunk.web && (
                                     <li key={idx}><a href={chunk.web.uri} target="_blank" rel="noopener noreferrer">{chunk.web.title || chunk.web.uri}</a></li>
@@ -743,8 +727,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
                         </div>
                     )}
                 </>
-              )}
-            </div>
+            )}
           </div>
         ))}
         {isLoading && <div className="typing-indicator"><span></span><span></span><span></span></div>}
@@ -752,7 +735,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       </div>
 
       <div className={`chat-input-area glass-panel ${!isOnline ? 'offline-dim' : ''}`}>
-        <input placeholder={isOnline ? "Kérdezz..." : "Offline..."} value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)} disabled={!isOnline} />
+        <input placeholder="Írj üzenetet..." value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)} disabled={!isOnline} />
         <button onClick={() => sendMessage(inputText)} className="send-btn" disabled={!isOnline}><Icon name="send" /></button>
       </div>
     </div>
@@ -787,10 +770,10 @@ const CreativeView = ({ isOnline }: { isOnline: boolean }) => {
 
   return (
     <div className="view-container">
-      <header className="view-header"><h2>Alkotás</h2><Icon name="palette" /></header>
+      <header className="view-header"><h2>Képgenerátor</h2><Icon name="palette" /></header>
       <div className={`glass-panel ${!isOnline ? 'offline-dim' : ''}`}>
-        <textarea placeholder="Kép prompt..." value={prompt} onChange={(e) => setPrompt(e.target.value)} className="creative-input" disabled={!isOnline} />
-        <button className="ai-analysis-btn w-full" onClick={generateImage} disabled={isGenerating || !isOnline}>{isGenerating ? 'Generálás...' : 'Létrehozás'}</button>
+        <textarea placeholder="Mit rajzoljak?" value={prompt} onChange={(e) => setPrompt(e.target.value)} className="creative-input" disabled={!isOnline} />
+        <button className="ai-analysis-btn w-full" onClick={generateImage} disabled={isGenerating || !isOnline}>{isGenerating ? 'Generálás...' : 'Indítás'}</button>
       </div>
       {generatedImageUrl && <img src={generatedImageUrl} alt="Gen" className="gen-img fade-in" />}
     </div>
@@ -803,18 +786,13 @@ const App = () => {
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [isSyncing, setIsSyncing] = useState(false);
     const [conflictInfo, setConflictInfo] = useState<{ local: FinancialRecord, remote: FinancialRecord } | null>(null);
-    
     const [ledgerRecords, setLedgerRecords] = useState<FinancialRecord[]>(() => {
         const saved = localStorage.getItem('herwinner_ledger');
         return saved ? JSON.parse(saved) : [];
     });
 
-    // Detect online status and sync
     useEffect(() => {
-        const handleOnline = () => {
-            setIsOnline(true);
-            triggerSync();
-        };
+        const handleOnline = () => { setIsOnline(true); triggerSync(); };
         const handleOffline = () => setIsOnline(false);
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
@@ -827,92 +805,23 @@ const App = () => {
     const triggerSync = async () => {
         const pending = ledgerRecords.filter(r => r.syncStatus === 'pending');
         if (pending.length === 0) return;
-
         setIsSyncing(true);
-        
-        // Simulating robust sync logic with conflict detection
-        await new Promise(r => setTimeout(r, 2000));
-        
-        const updatedRecords = [...ledgerRecords];
-        
-        pending.forEach(local => {
-            const index = updatedRecords.findIndex(r => r.id === local.id);
-            if (index !== -1) {
-                // Simulate a conflict check (Randomly flag conflicts for demo purposes if it was an existing record)
-                // In a real app, this would check server state.
-                const isExistingRecord = parseInt(local.id) < Date.now() - 10000;
-                const simulateConflict = isExistingRecord && Math.random() > 0.8;
-                
-                if (simulateConflict) {
-                    updatedRecords[index] = { ...local, syncStatus: 'conflict' };
-                    // For the sake of UI demo, let's trigger a modal for the first conflict
-                    setConflictInfo({
-                        local,
-                        remote: { ...local, name: local.name + " (Szerver verzió)", amount: local.amount * 1.1, syncStatus: 'synced' }
-                    });
-                } else {
-                    updatedRecords[index] = { ...local, syncStatus: 'synced' };
-                }
-            }
-        });
-
-        setLedgerRecords(updatedRecords);
+        await new Promise(r => setTimeout(r, 1500));
+        setLedgerRecords(prev => prev.map(r => r.syncStatus === 'pending' ? { ...r, syncStatus: 'synced' } : r));
         setIsSyncing(false);
     };
 
     useEffect(() => { localStorage.setItem('herwinner_ledger', JSON.stringify(ledgerRecords)); }, [ledgerRecords]);
 
-    const handleResolveConflict = (version: 'local' | 'remote') => {
-        if (!conflictInfo) return;
-        const resolved = version === 'local' ? { ...conflictInfo.local, syncStatus: 'synced' as SyncStatus } : { ...conflictInfo.remote, syncStatus: 'synced' as SyncStatus };
-        setLedgerRecords(prev => prev.map(r => r.id === resolved.id ? resolved : r));
-        setConflictInfo(null);
-    };
-
-    const addRecord = (r: FinancialRecord) => {
-        const newRecord = { ...r, lastModified: Date.now(), syncStatus: isOnline ? 'synced' : ('pending' as SyncStatus) };
-        setLedgerRecords(prev => [newRecord, ...prev]);
-    };
-
-    const updateRecord = (r: FinancialRecord) => {
-        const updated = { ...r, lastModified: Date.now(), syncStatus: isOnline ? 'synced' : ('pending' as SyncStatus) };
-        setLedgerRecords(prev => prev.map(item => item.id === r.id ? updated : item));
-    };
-
-    const deleteRecord = (id: string) => {
-        setLedgerRecords(prev => prev.filter(item => item.id !== id));
-    };
-
     return (
         <div className="app-shell">
             <BrandHeader isOnline={isOnline} />
-            {isSyncing && (
-                <div className="sync-toast fade-in">
-                    <Icon name="sync" className="spin" />
-                    <span>Szinkronizálás...</span>
-                </div>
-            )}
+            {isSyncing && <div className="sync-toast fade-in"><Icon name="sync" className="spin" /><span>Mentés...</span></div>}
             
-            {conflictInfo && (
-                <ConflictModal 
-                    localRecord={conflictInfo.local} 
-                    remoteRecord={conflictInfo.remote} 
-                    onResolve={handleResolveConflict} 
-                />
-            )}
-
             <div className="content-area">
                 {view === 'finance' && <DashboardView records={ledgerRecords} isOnline={isOnline} />}
-                {view === 'ledger' && (
-                    <NotesView 
-                        records={ledgerRecords} 
-                        onAddRecord={addRecord} 
-                        onUpdateRecord={updateRecord} 
-                        onDeleteRecord={deleteRecord} 
-                        isOnline={isOnline} 
-                    />
-                )}
-                {view === 'ai' && <AiAssistantView onAddRecord={addRecord} isOnline={isOnline} />}
+                {view === 'ledger' && <NotesView records={ledgerRecords} onAddRecord={r => setLedgerRecords([r, ...ledgerRecords])} onUpdateRecord={r => setLedgerRecords(ledgerRecords.map(i => i.id === r.id ? r : i))} onDeleteRecord={id => setLedgerRecords(ledgerRecords.filter(i => i.id !== id))} isOnline={isOnline} />}
+                {view === 'ai' && <AiAssistantView onAddRecord={r => setLedgerRecords([r, ...ledgerRecords])} isOnline={isOnline} />}
                 {view === 'creative' && <CreativeView isOnline={isOnline} />}
             </div>
             
