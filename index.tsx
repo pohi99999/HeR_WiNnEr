@@ -59,6 +59,7 @@ type ChatMessage = {
     role: 'user' | 'model' | 'system'; 
     text: string; 
     pendingTx?: PendingTransaction;
+    resolvedTx?: Omit<PendingTransaction, 'isEditing' | 'sessionResolver'>;
     grounding?: any[]; 
 };
 
@@ -505,7 +506,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
   const handleConfirmation = (tx: PendingTransaction, confirmed: boolean) => {
     if (confirmed) {
         onAddRecord({
-            id: tx.id,
+            id: Date.now().toString(),
             name: tx.name,
             amount: tx.amount,
             date: new Date().toISOString().split('T')[0],
@@ -514,12 +515,35 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
             syncStatus: isOnline ? 'synced' : 'pending',
             lastModified: Date.now()
         });
-        setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✓ Rögzítve: ${tx.name}` } : m));
+        setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { 
+            ...m, 
+            pendingTx: undefined, 
+            resolvedTx: { ...tx },
+            text: `✓ Rögzítve: ${tx.name}` 
+        } : m));
         speakText("Sikeresen mentettem.");
     } else {
         setMessages(prev => prev.map(m => m.pendingTx?.id === tx.id ? { ...m, pendingTx: undefined, text: `✗ Elvetve: ${tx.name}` } : m));
         speakText("Megszakítva.");
     }
+  };
+
+  const triggerDirectRecord = (initialData: Partial<PendingTransaction> = {}) => {
+      const txId = Date.now().toString();
+      setMessages(prev => [...prev, {
+          id: txId, 
+          role: 'system', 
+          text: initialData.name ? 'Ismételt rögzítés...' : 'Manuális rögzítés...',
+          pendingTx: { 
+              id: txId, 
+              toolCallId: `manual-${txId}`, 
+              name: initialData.name || 'Új tétel', 
+              amount: initialData.amount || 0, 
+              category: initialData.category || 'Egyéb', 
+              comment: initialData.comment || 'Direkt rögzítés',
+              isEditing: !initialData.name // Open editor if blank
+          }
+      }]);
   };
 
   const updatePendingTx = (id: string, updates: Partial<PendingTransaction>) => {
@@ -642,6 +666,9 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       <header className="view-header">
         <h2>Asszisztens</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="icon-btn" onClick={() => triggerDirectRecord()} title="Manuális rögzítés">
+            <Icon name="add_circle" style={{ color: 'var(--secondary)' }} />
+          </button>
           <button className="icon-btn" onClick={() => setShowVoiceSettings(!showVoiceSettings)}>
             <Icon name="settings_voice" style={{ color: showVoiceSettings ? 'var(--primary)' : 'inherit' }} />
           </button>
@@ -704,9 +731,14 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
                     <div className="tx-header">
                         <Icon name="receipt_long" />
                         <span>Jóváhagyás</span>
-                        <button className="icon-btn-mini" onClick={() => updatePendingTx(msg.pendingTx!.id, { isEditing: !msg.pendingTx!.isEditing })}>
-                            <Icon name={msg.pendingTx.isEditing ? "check" : "edit"} style={{ fontSize: '14px' }} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                            <button className="icon-btn-mini" onClick={() => handleConfirmation(msg.pendingTx!, true)} title="Azonnali rögzítés">
+                                <Icon name="bolt" style={{ fontSize: '14px', color: 'var(--warning)' }} />
+                            </button>
+                            <button className="icon-btn-mini" onClick={() => updatePendingTx(msg.pendingTx!.id, { isEditing: !msg.pendingTx!.isEditing })} title="Szerkesztés">
+                                <Icon name={msg.pendingTx.isEditing ? "check" : "edit"} style={{ fontSize: '14px' }} />
+                            </button>
+                        </div>
                     </div>
                     {msg.pendingTx.isEditing ? (
                         <div className="tx-edit-fields">
@@ -725,8 +757,16 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
                     </div>
                 </div>
             ) : (
-                <>
+                <div style={{ position: 'relative' }}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                    {msg.resolvedTx && (
+                        <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                            <button className="sync-badge-btn" onClick={() => triggerDirectRecord(msg.resolvedTx)} style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--secondary)' }}>
+                                <Icon name="replay" style={{ fontSize: '12px' }} />
+                                <span style={{ fontSize: '10px' }}>Hasonló tétel</span>
+                            </button>
+                        </div>
+                    )}
                     {msg.grounding && msg.grounding.length > 0 && (
                         <div className="grounding-sources">
                             <ul>
@@ -736,7 +776,7 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
                             </ul>
                         </div>
                     )}
-                </>
+                </div>
             )}
           </div>
         ))}
@@ -745,6 +785,9 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
       </div>
 
       <div className={`chat-input-area glass-panel ${!isOnline ? 'offline-dim' : ''}`}>
+        <button className="icon-btn" onClick={() => triggerDirectRecord()} disabled={!isOnline} style={{ padding: '4px' }}>
+            <Icon name="add" style={{ fontSize: '20px' }} />
+        </button>
         <input placeholder="Írj üzenetet..." value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)} disabled={!isOnline} />
         <button onClick={() => sendMessage(inputText)} className="send-btn" disabled={!isOnline}><Icon name="send" /></button>
       </div>
