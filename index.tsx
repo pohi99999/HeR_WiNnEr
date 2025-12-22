@@ -80,15 +80,23 @@ const Icon = ({ name, className, style }: { name: string; className?: string; st
   <span className={`material-symbols-outlined ${className || ''}`} style={style}>{name}</span>
 );
 
-const BrandHeader = ({ isOnline }: { isOnline: boolean }) => (
+const BrandHeader = ({ isOnline, pendingCount, onRetry }: { isOnline: boolean; pendingCount: number; onRetry: () => void }) => (
     <div className="brand-header">
         <div className="brand-main">
             <span className="brand-text">HeR WiNnEr</span>
             <div className="brand-dot"></div>
         </div>
-        <div className={`connectivity-tag ${isOnline ? 'online' : 'offline'}`}>
-            <Icon name={isOnline ? "cloud_done" : "cloud_off"} style={{ fontSize: '14px' }} />
-            <span>{isOnline ? 'Online' : 'Offline Mode'}</span>
+        <div className="status-container">
+            {pendingCount > 0 && isOnline && (
+                <button className="sync-badge-btn" onClick={onRetry} title="Kézi szinkronizálás">
+                    <Icon name="sync" className="spin" style={{ fontSize: '14px' }} />
+                    <span>{pendingCount}</span>
+                </button>
+            )}
+            <div className={`connectivity-tag ${isOnline ? 'online' : 'offline'}`}>
+                <Icon name={isOnline ? "cloud_done" : "cloud_off"} style={{ fontSize: '14px' }} />
+                <span>{isOnline ? 'Online' : 'Offline Mode'}</span>
+            </div>
         </div>
     </div>
 );
@@ -100,36 +108,39 @@ const ConflictModal = ({ localRecord, remoteRecord, onResolve }: {
     onResolve: (version: 'local' | 'remote') => void 
 }) => {
     const formatCurrency = (val: number) => new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 0 }).format(val);
+    const formatDate = (ts?: number) => ts ? new Date(ts).toLocaleTimeString('hu-HU') : 'Ismeretlen';
     
     return (
         <div className="modal-overlay fade-in">
             <div className="modal-content glass-panel conflict-modal">
                 <header className="modal-header">
-                    <h3>Ütközés észleléve</h3>
+                    <h3>Adatütközés feloldása</h3>
                     <Icon name="sync_problem" style={{ color: 'var(--warning)' }} />
                 </header>
-                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                    A következő tétel módosult a felhőben, amíg te offline voltál. Melyik verziót szeretnéd megtartani?
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                    Ez a tétel módosult a szerveren és helyileg is, amíg offline voltál. Válaszd ki, melyik maradjon meg.
                 </p>
                 
                 <div className="conflict-grid">
                     <div className="conflict-version local">
-                        <span className="version-label">Helyi (Saját)</span>
+                        <span className="version-label">Helyi verzió (Saját)</span>
                         <div className="v-box">
+                            <small className="v-ts">Saját módosítás: {formatDate(localRecord.lastModified)}</small>
                             <strong>{localRecord.name}</strong>
                             <span className={localRecord.amount >= 0 ? 'success-text' : 'danger-text'}>{formatCurrency(localRecord.amount)}</span>
                             <small>{localRecord.category}</small>
                         </div>
-                        <button className="confirm-btn" onClick={() => onResolve('local')}>Ezt tartom meg</button>
+                        <button className="confirm-btn" onClick={() => onResolve('local')}>A sajátot tartom meg</button>
                     </div>
                     <div className="conflict-version remote">
-                        <span className="version-label">Felhőbeli</span>
+                        <span className="version-label">Szerver verzió</span>
                         <div className="v-box">
+                            <small className="v-ts">Szerver idő: {formatDate(remoteRecord.lastModified)}</small>
                             <strong>{remoteRecord.name}</strong>
                             <span className={remoteRecord.amount >= 0 ? 'success-text' : 'danger-text'}>{formatCurrency(remoteRecord.amount)}</span>
                             <small>{remoteRecord.category}</small>
                         </div>
-                        <button className="cancel-btn" onClick={() => onResolve('remote')}>Váltás erre</button>
+                        <button className="cancel-btn" onClick={() => onResolve('remote')}>Váltás a szerverre</button>
                     </div>
                 </div>
             </div>
@@ -350,7 +361,7 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
             <header className="view-header">
                 <div>
                     <h2>Pénzügyi Napló</h2>
-                    {!isOnline && <span style={{ fontSize: '10px', color: 'var(--secondary)' }}>Helyi mód aktív</span>}
+                    {!isOnline && <span style={{ fontSize: '10px', color: 'var(--secondary)' }}>Offline szerkesztés mód</span>}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <button className="icon-btn-mini" onClick={exportToCSV} title="CSV Export">
@@ -430,7 +441,7 @@ const NotesView = ({ records, onAddRecord, onUpdateRecord, onDeleteRecord, isOnl
     );
 };
 
-// --- AI ASSISTANT VIEW (WITH LIVE AUDIO) ---
+// --- AI ASSISTANT VIEW ---
 const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: FinancialRecord) => void, isOnline: boolean }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([{ id: '0', role: 'model', text: 'Szia! HeR vagyok. Miben segíthetek?' }]);
   const [inputText, setInputText] = useState('');
@@ -485,7 +496,6 @@ const AiAssistantView = ({ onAddRecord, isOnline }: { onAddRecord: (r: Financial
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
-        // Alkalmazzuk a csúszkával beállított sebességet a lejátszásra
         source.playbackRate.value = voiceSpeed;
         source.start();
       }
@@ -785,7 +795,10 @@ const App = () => {
     const [view, setView] = useState<'finance' | 'ledger' | 'ai' | 'creative'>('ai');
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [isSyncing, setIsSyncing] = useState(false);
-    const [conflictInfo, setConflictInfo] = useState<{ local: FinancialRecord, remote: FinancialRecord } | null>(null);
+    
+    // Ütközési sor kezelése
+    const [conflictsToResolve, setConflictsToResolve] = useState<{ local: FinancialRecord, remote: FinancialRecord }[]>([]);
+    
     const [ledgerRecords, setLedgerRecords] = useState<FinancialRecord[]>(() => {
         const saved = localStorage.getItem('herwinner_ledger');
         return saved ? JSON.parse(saved) : [];
@@ -803,25 +816,125 @@ const App = () => {
     }, [ledgerRecords]);
 
     const triggerSync = async () => {
-        const pending = ledgerRecords.filter(r => r.syncStatus === 'pending');
-        if (pending.length === 0) return;
         setIsSyncing(true);
+        // Szimulált hálózati késleltetés
         await new Promise(r => setTimeout(r, 1500));
-        setLedgerRecords(prev => prev.map(r => r.syncStatus === 'pending' ? { ...r, syncStatus: 'synced' } : r));
+        
+        const newConflicts: { local: FinancialRecord, remote: FinancialRecord }[] = [];
+        const serverTime = Date.now();
+
+        const updatedRecords = ledgerRecords.map(r => {
+            const isExistingRecord = parseInt(r.id) < (serverTime - 10000);
+            
+            // Csak akkor szimulálunk szerver-oldali változást, ha a rekord már egy ideje létezik
+            // Ez elkerüli, hogy az éppen most hozzáadott dolgok azonnal ütközzenek
+            const serverHasUpdate = isExistingRecord && Math.random() > 0.92; // 8% esély szerver változásra
+
+            if (serverHasUpdate) {
+                const serverLastModified = serverTime - 5000;
+                const remoteVersion: FinancialRecord = { 
+                    ...r, 
+                    name: r.name + " (Szerver frissítés)", 
+                    amount: r.amount + (Math.random() > 0.5 ? 500 : -500),
+                    lastModified: serverLastModified,
+                    syncStatus: 'synced'
+                };
+
+                if (r.syncStatus === 'pending') {
+                    // VALÓDI ÜTKÖZÉS: Mindkét fél módosította az adatot offline időszak alatt
+                    newConflicts.push({ local: r, remote: remoteVersion });
+                    return { ...r, syncStatus: 'conflict' as SyncStatus };
+                } else {
+                    // Csak a szerveren történt változás -> automatikus letöltés
+                    return remoteVersion;
+                }
+            }
+
+            // Ha nincs szerver változás, de nálunk pending, akkor sikeresen feltöltöttük
+            if (r.syncStatus === 'pending') {
+                return { ...r, syncStatus: 'synced' as SyncStatus, lastModified: serverTime };
+            }
+
+            return r;
+        });
+
+        if (newConflicts.length > 0) {
+            setConflictsToResolve(prev => [...prev, ...newConflicts]);
+        }
+
+        setLedgerRecords(updatedRecords);
         setIsSyncing(false);
     };
+
+    const handleResolveConflict = (version: 'local' | 'remote') => {
+        if (conflictsToResolve.length === 0) return;
+        
+        const current = conflictsToResolve[0];
+        const serverTime = Date.now();
+        const resolved = version === 'local' 
+            ? { ...current.local, syncStatus: 'synced' as SyncStatus, lastModified: serverTime } 
+            : { ...current.remote, syncStatus: 'synced' as SyncStatus, lastModified: current.remote.lastModified };
+            
+        setLedgerRecords(prev => prev.map(r => r.id === resolved.id ? resolved : r));
+        setConflictsToResolve(prev => prev.slice(1));
+    };
+
+    // CRUD műveletek metaadat-kezeléssel
+    const addRecord = (r: FinancialRecord) => {
+        const finalRecord = {
+            ...r,
+            lastModified: Date.now(),
+            syncStatus: isOnline ? 'synced' : 'pending' as SyncStatus
+        };
+        setLedgerRecords([finalRecord, ...ledgerRecords]);
+        if (isOnline) triggerSync();
+    };
+
+    const updateRecord = (r: FinancialRecord) => {
+        const finalRecord = {
+            ...r,
+            lastModified: Date.now(),
+            syncStatus: isOnline ? 'synced' : 'pending' as SyncStatus
+        };
+        setLedgerRecords(ledgerRecords.map(item => item.id === r.id ? finalRecord : item));
+        if (isOnline) triggerSync();
+    };
+
+    const deleteRecord = (id: string) => {
+        setLedgerRecords(ledgerRecords.filter(item => item.id !== id));
+        // Megjegyzés: Egy robusztusabb rendszerben a törlést is "pending delete" státusszal kellene követni,
+        // de ehhez a szervernek is tudnia kell a törlésről. Ebben a verzióban az azonnali lokális törlésre fókuszálunk.
+    };
+
+    const pendingCount = ledgerRecords.filter(r => r.syncStatus === 'pending').length;
 
     useEffect(() => { localStorage.setItem('herwinner_ledger', JSON.stringify(ledgerRecords)); }, [ledgerRecords]);
 
     return (
         <div className="app-shell">
-            <BrandHeader isOnline={isOnline} />
-            {isSyncing && <div className="sync-toast fade-in"><Icon name="sync" className="spin" /><span>Mentés...</span></div>}
+            <BrandHeader isOnline={isOnline} pendingCount={pendingCount} onRetry={triggerSync} />
+            {isSyncing && <div className="sync-toast fade-in"><Icon name="sync" className="spin" /><span>Háttérszinkronizálás...</span></div>}
             
+            {conflictsToResolve.length > 0 && (
+                <ConflictModal 
+                    localRecord={conflictsToResolve[0].local} 
+                    remoteRecord={conflictsToResolve[0].remote} 
+                    onResolve={handleResolveConflict} 
+                />
+            )}
+
             <div className="content-area">
                 {view === 'finance' && <DashboardView records={ledgerRecords} isOnline={isOnline} />}
-                {view === 'ledger' && <NotesView records={ledgerRecords} onAddRecord={r => setLedgerRecords([r, ...ledgerRecords])} onUpdateRecord={r => setLedgerRecords(ledgerRecords.map(i => i.id === r.id ? r : i))} onDeleteRecord={id => setLedgerRecords(ledgerRecords.filter(i => i.id !== id))} isOnline={isOnline} />}
-                {view === 'ai' && <AiAssistantView onAddRecord={r => setLedgerRecords([r, ...ledgerRecords])} isOnline={isOnline} />}
+                {view === 'ledger' && (
+                    <NotesView 
+                        records={ledgerRecords} 
+                        onAddRecord={addRecord} 
+                        onUpdateRecord={updateRecord} 
+                        onDeleteRecord={deleteRecord} 
+                        isOnline={isOnline} 
+                    />
+                )}
+                {view === 'ai' && <AiAssistantView onAddRecord={addRecord} isOnline={isOnline} />}
                 {view === 'creative' && <CreativeView isOnline={isOnline} />}
             </div>
             
